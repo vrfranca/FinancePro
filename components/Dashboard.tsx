@@ -2,7 +2,7 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, Wallet, Calendar, PlusCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
-import { Transaction, Category } from '../types';
+import { Transaction, Category, RecurringItem } from '../types';
 
 interface DashboardProps {
   stats: {
@@ -11,23 +11,51 @@ interface DashboardProps {
     balance: number;
   };
   transactions: Transaction[];
+  recurringItems: RecurringItem[];
   categories: Category[];
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, categories }) => {
+const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, recurringItems, categories }) => {
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
-  const recentTransactions = transactions.slice(0, 5);
+  // Combinar transações com recorrências do mês atual
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
 
-  // Chart Data Preparation
+  const recurringForCurrentMonth = recurringItems.map(r => {
+    // Cria uma data para o item recorrente usando o dia do mês atual
+    const recurringDate = new Date(currentYear, currentMonth, r.dayOfMonth);
+    return {
+      id: `recurring-${r.id}`,
+      date: recurringDate.toISOString().split('T')[0],
+      description: r.description,
+      categoryId: r.categoryId,
+      type: r.type,
+      amount: r.amount,
+      isRecurring: true
+    };
+  });
+
+  // Combinar e ordenar por data (mais recentes primeiro)
+  const allTransactions = [...transactions, ...recurringForCurrentMonth].sort((a, b) => {
+    return new Date(b.date).getTime() - new Date(a.date).getTime();
+  });
+
+  const recentTransactions = allTransactions.slice(0, 5);
+
+  // Chart Data Preparation - incluindo itens recorrentes
   const categoryData = categories
     .filter(c => c.type === 'EXPENSE')
     .map(c => {
-      const amount = transactions
-        .filter(t => t.categoryId === c.id)
+      const transactionAmount = transactions
+        .filter(t => t.categoryId === c.id && t.type === 'EXPENSE')
         .reduce((sum, t) => sum + t.amount, 0);
-      return { name: c.name, value: amount, color: c.color };
+      const recurringAmount = recurringItems
+        .filter(r => r.categoryId === c.id && r.type === 'EXPENSE')
+        .reduce((sum, r) => sum + r.amount, 0);
+      return { name: c.name, value: transactionAmount + recurringAmount, color: c.color };
     })
     .filter(d => d.value > 0);
 
@@ -41,10 +69,17 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, categories }
     const dayExpense = transactions
       .filter(t => t.date === dateStr && t.type === 'EXPENSE')
       .reduce((sum, t) => sum + t.amount, 0);
+    // Adiciona distribuição diária dos itens recorrentes (sprecha pelo mês)
+    const recurringIncomeDaily = recurringItems
+      .filter(r => r.type === 'INCOME' && r.dayOfMonth === d.getDate())
+      .reduce((sum, r) => sum + r.amount, 0);
+    const recurringExpenseDaily = recurringItems
+      .filter(r => r.type === 'EXPENSE' && r.dayOfMonth === d.getDate())
+      .reduce((sum, r) => sum + r.amount, 0);
     return {
       day: d.toLocaleDateString('pt-BR', { weekday: 'short' }),
-      receita: dayIncome,
-      despesa: dayExpense
+      receita: dayIncome + recurringIncomeDaily,
+      despesa: dayExpense + recurringExpenseDaily
     };
   });
 
@@ -174,7 +209,16 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, categories }
                 return (
                   <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 text-sm text-slate-600">{new Date(t.date).toLocaleDateString('pt-BR')}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-slate-800">{t.description}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-slate-800">
+                      <div className="flex items-center gap-2">
+                        {t.description}
+                        {(t as any).isRecurring && (
+                          <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-indigo-100 text-indigo-700">
+                            Recorrente
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-6 py-4 text-sm">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: `${cat?.color}20`, color: cat?.color }}>
                         {cat?.name}

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Plus, Trash2, Tag, CreditCard, Users as UsersIcon, Edit2, X } from 'lucide-react';
-import { AppState, Category, Account, User } from '../types';
+import { AppState, Category, Account, User, TransactionType } from '../types';
 
 interface SettingsViewProps {
   state: AppState;
@@ -14,7 +14,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate }) => {
   const [editingItem, setEditingItem] = useState<any>(null);
 
   // Modal Form State
-  const [catForm, setCatForm] = useState({ name: '', type: 'EXPENSE', color: '#ef4444' });
+  // Fix: Explicitly type catForm to use TransactionType instead of string to prevent type mismatch on spread
+  const [catForm, setCatForm] = useState<{ name: string; type: TransactionType; color: string }>({ 
+    name: '', 
+    type: 'EXPENSE', 
+    color: '#ef4444' 
+  });
   const [accForm, setAccForm] = useState({ name: '', initialBalance: '0' });
 
   const handleOpenCatModal = (item?: Category) => {
@@ -42,6 +47,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate }) => {
   const handleSaveCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingItem) {
+      // Fix: Spread catForm into existing category; now safe since catForm.type is TransactionType
       onUpdate({
         categories: state.categories.map(c => c.id === editingItem.id ? { ...c, ...catForm } : c)
       });
@@ -49,7 +55,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate }) => {
       const newCat: Category = {
         id: Math.random().toString(36).substr(2, 9),
         name: catForm.name,
-        type: catForm.type as any,
+        type: catForm.type,
         color: catForm.color
       };
       onUpdate({ categories: [...state.categories, newCat] });

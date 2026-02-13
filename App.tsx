@@ -59,19 +59,29 @@ const App: React.FC = () => {
   }, [state.recurringItems, state.currentUser]);
 
   const stats = useMemo(() => {
+    // Transações normais
     const income = filteredTransactions
       .filter(t => t.type === 'INCOME')
       .reduce((acc, t) => acc + t.amount, 0);
     const expenses = filteredTransactions
       .filter(t => t.type === 'EXPENSE')
       .reduce((acc, t) => acc + t.amount, 0);
+    
+    // Itens recorrentes (somados mensalmente)
+    const recurringIncome = filteredRecurring
+      .filter(r => r.type === 'INCOME')
+      .reduce((acc, r) => acc + r.amount, 0);
+    const recurringExpenses = filteredRecurring
+      .filter(r => r.type === 'EXPENSE')
+      .reduce((acc, r) => acc + r.amount, 0);
+    
     const initialAccBalance = state.accounts.reduce((acc, a) => acc + a.initialBalance, 0);
     return {
-      totalIncome: income,
-      totalExpense: expenses,
-      balance: initialAccBalance + income - expenses
+      totalIncome: income + recurringIncome,
+      totalExpense: expenses + recurringExpenses,
+      balance: initialAccBalance + income - expenses + recurringIncome - recurringExpenses
     };
-  }, [filteredTransactions, state.accounts]);
+  }, [filteredTransactions, filteredRecurring, state.accounts]);
 
   // Actions
   const addTransaction = (t: Omit<Transaction, 'id' | 'userId'>) => {
@@ -126,7 +136,7 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <Dashboard stats={stats} transactions={filteredTransactions} categories={state.categories} />;
+        return <Dashboard stats={stats} transactions={filteredTransactions} recurringItems={filteredRecurring} categories={state.categories} />;
       case 'transactions':
         return (
           <TransactionsView 
@@ -152,7 +162,7 @@ const App: React.FC = () => {
       case 'settings':
         return <SettingsView state={state} onUpdate={updateSettings} />;
       case 'reports':
-        return <ReportsView transactions={filteredTransactions} categories={state.categories} />;
+        return <ReportsView transactions={filteredTransactions} recurringItems={filteredRecurring} categories={state.categories} />;
       default:
         return <Dashboard stats={stats} transactions={filteredTransactions} categories={state.categories} />;
     }

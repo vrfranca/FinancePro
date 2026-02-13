@@ -1,15 +1,16 @@
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Transaction, Category } from '../types';
+import { Transaction, Category, RecurringItem } from '../types';
 
 interface ReportsViewProps {
   transactions: Transaction[];
+  recurringItems: RecurringItem[];
   categories: Category[];
 }
 
-const ReportsView: React.FC<ReportsViewProps> = ({ transactions, categories }) => {
-  // Aggregate data by month
+const ReportsView: React.FC<ReportsViewProps> = ({ transactions, recurringItems, categories }) => {
+  // Aggregate data by month - incluindo itens recorrentes
   const monthlyData = useMemo(() => {
     const months: Record<string, { month: string, receita: number, despesa: number }> = {};
     
@@ -25,6 +26,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ transactions, categories }) =
       };
     }
 
+    // Agregar transações normais
     transactions.forEach(t => {
       const date = new Date(t.date);
       const key = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
@@ -34,12 +36,22 @@ const ReportsView: React.FC<ReportsViewProps> = ({ transactions, categories }) =
       }
     });
 
-    return Object.values(months);
-  }, [transactions]);
+    // Agregar itens recorrentes (considerar o mês corrente e próximos 6 meses)
+    recurringItems.forEach(r => {
+      const now = new Date();
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date();
+        d.setMonth(d.getMonth() - i);
+        const key = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+        if (months[key]) {
+          if (r.type === 'INCOME') months[key].receita += r.amount;
+          else months[key].despesa += r.amount;
+        }
+      }
+    });
 
-  function useMemo<T>(factory: () => T, deps: any[]): T {
-    return React.useMemo(factory, deps);
-  }
+    return Object.values(months);
+  }, [transactions, recurringItems]);
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
@@ -79,9 +91,13 @@ const ReportsView: React.FC<ReportsViewProps> = ({ transactions, categories }) =
             {categories
               .filter(c => c.type === 'EXPENSE')
               .map(c => {
-                const total = transactions
-                  .filter(t => t.categoryId === c.id)
+                const transactionTotal = transactions
+                  .filter(t => t.categoryId === c.id && t.type === 'EXPENSE')
                   .reduce((sum, t) => sum + t.amount, 0);
+                const recurringTotal = recurringItems
+                  .filter(r => r.categoryId === c.id && r.type === 'EXPENSE')
+                  .reduce((sum, r) => sum + r.amount, 0);
+                const total = transactionTotal + recurringTotal;
                 return { name: c.name, amount: total, color: c.color };
               })
               .sort((a, b) => b.amount - a.amount)
