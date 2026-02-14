@@ -1,8 +1,8 @@
 
-import React from 'react';
-import { TrendingUp, TrendingDown, Wallet, Calendar, PlusCircle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
-import { Transaction, Category, RecurringItem } from '../types';
+import React, { useMemo } from 'react';
+import { TrendingUp, TrendingDown, Wallet, Calendar, PieChart } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart as PieChartIcon, Pie } from 'recharts';
+import { Transaction, Category, RecurringItem, User } from '../types';
 
 interface DashboardProps {
   stats: {
@@ -13,11 +13,30 @@ interface DashboardProps {
   transactions: Transaction[];
   recurringItems: RecurringItem[];
   categories: Category[];
+  currentUser: User | null;
+  users: User[];
+  selectedUserIdForViewing: string | 'all';
+  onChangeUserFilter: (userId: string | 'all') => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, recurringItems, categories }) => {
+const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, recurringItems, categories, currentUser, users, selectedUserIdForViewing, onChangeUserFilter }) => {
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+
+  // Recalculate stats based on filtered data
+  const recalculatedStats = useMemo(() => {
+    const income = transactions.filter(t => t.type === 'INCOME').reduce((acc, t) => acc + t.amount, 0);
+    const expenses = transactions.filter(t => t.type === 'EXPENSE').reduce((acc, t) => acc + t.amount, 0);
+
+    const recurringIncome = recurringItems.filter(r => r.type === 'INCOME').reduce((acc, r) => acc + r.amount, 0);
+    const recurringExpenses = recurringItems.filter(r => r.type === 'EXPENSE').reduce((acc, r) => acc + r.amount, 0);
+
+    return {
+      totalIncome: income + recurringIncome,
+      totalExpense: expenses + recurringExpenses,
+      balance: income - expenses + recurringIncome - recurringExpenses
+    };
+  }, [transactions, recurringItems]);
 
   // Combinar transações com recorrências do mês atual
   const now = new Date();
@@ -85,6 +104,26 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, recurringIte
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
+      {/* User Filter for Admin */}
+      {currentUser?.isAdmin && (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <label className="block text-sm font-medium text-slate-700 mb-3">Filtrar por Usuário</label>
+          <select 
+            value={selectedUserIdForViewing} 
+            onChange={(e) => onChangeUserFilter(e.target.value)}
+            className="w-full md:w-64 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          >
+            <option value="all">Todos os usuários (consolidado)</option>
+            {users
+              .filter(u => u.id !== currentUser.id)
+              .map(u => (
+                <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+              ))
+            }
+          </select>
+        </div>
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
@@ -94,7 +133,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, recurringIte
             </div>
             <div>
               <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Receitas</p>
-              <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(stats.totalIncome)}</h3>
+              <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(recalculatedStats.totalIncome)}</h3>
             </div>
           </div>
         </div>
@@ -106,7 +145,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, recurringIte
             </div>
             <div>
               <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Despesas</p>
-              <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(stats.totalExpense)}</h3>
+              <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(recalculatedStats.totalExpense)}</h3>
             </div>
           </div>
         </div>
@@ -118,8 +157,8 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, recurringIte
             </div>
             <div>
               <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Saldo Líquido</p>
-              <h3 className={`text-2xl font-bold ${stats.balance >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>
-                {formatCurrency(stats.balance)}
+              <h3 className={`text-2xl font-bold ${recalculatedStats.balance >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>
+                {formatCurrency(recalculatedStats.balance)}
               </h3>
             </div>
           </div>
@@ -159,7 +198,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, recurringIte
           <div className="h-64 flex items-center justify-center">
             {categoryData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+                <PieChartIcon>
                   <Pie
                     data={categoryData}
                     cx="50%"
@@ -176,7 +215,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, recurringIte
                   <Tooltip 
                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                   />
-                </PieChart>
+                </PieChartIcon>
               </ResponsiveContainer>
             ) : (
               <p className="text-slate-400 text-sm italic">Nenhuma despesa registrada.</p>

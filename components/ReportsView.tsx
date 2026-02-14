@@ -1,15 +1,19 @@
 
 import React, { useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Transaction, Category, RecurringItem } from '../types';
+import { Transaction, Category, RecurringItem, User } from '../types';
 
 interface ReportsViewProps {
   transactions: Transaction[];
   recurringItems: RecurringItem[];
   categories: Category[];
+  currentUser: User | null;
+  users: User[];
+  selectedUserIdForViewing: string | 'all';
+  onChangeUserFilter: (userId: string | 'all') => void;
 }
 
-const ReportsView: React.FC<ReportsViewProps> = ({ transactions, recurringItems, categories }) => {
+const ReportsView: React.FC<ReportsViewProps> = ({ transactions, recurringItems, categories, currentUser, users, selectedUserIdForViewing, onChangeUserFilter }) => {
   // Aggregate data by month - incluindo itens recorrentes
   const monthlyData = useMemo(() => {
     const months: Record<string, { month: string, receita: number, despesa: number }> = {};
@@ -55,6 +59,26 @@ const ReportsView: React.FC<ReportsViewProps> = ({ transactions, recurringItems,
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
+      {/* User Filter for Admin */}
+      {currentUser?.isAdmin && (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <label className="block text-sm font-medium text-slate-700 mb-3">Filtrar por Usuário</label>
+          <select 
+            value={selectedUserIdForViewing} 
+            onChange={(e) => onChangeUserFilter(e.target.value)}
+            className="w-full md:w-64 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          >
+            <option value="all">Todos os usuários (consolidado)</option>
+            {users
+              .filter(u => u.id !== currentUser.id)
+              .map(u => (
+                <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+              ))
+            }
+          </select>
+        </div>
+      )}
+
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
         <h3 className="text-xl font-bold text-slate-800 mb-8">Evolução Mensal (Últimos 6 meses)</h3>
         <div className="h-96">

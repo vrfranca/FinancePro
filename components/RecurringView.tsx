@@ -76,37 +76,38 @@ const RecurringView: React.FC<RecurringViewProps> = ({ items, categories, accoun
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {items.map(item => {
           const cat = categories.find(c => c.id === item.categoryId);
           const acc = accounts.find(a => a.id === item.accountId);
           return (
-            <div key={item.id} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all group relative">
-              <div className="absolute top-4 right-4 flex gap-1">
-                <button onClick={() => handleEdit(item)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg">
-                  <Edit2 className="w-4 h-4" />
+            <div key={item.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all group relative pr-24">
+              <div className="absolute top-3 right-3 flex gap-2">
+                <button onClick={() => handleEdit(item)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                  <Edit2 className="w-5 h-5" />
                 </button>
-                <button onClick={() => onDelete(item.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg">
-                  <Trash2 className="w-4 h-4" />
+                <button onClick={() => onDelete(item.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
+                  <Trash2 className="w-5 h-5" />
                 </button>
               </div>
-              <div className="flex items-start justify-between mb-4">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'INCOME' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+              <div className="flex items-start justify-between mb-3 gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${item.type === 'INCOME' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
                   <Repeat className="w-5 h-5" />
                 </div>
-                <div className="text-right">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Dia {item.dayOfMonth}</p>
+                <div className="bg-indigo-600 text-white rounded-xl px-3 py-2 text-center flex-shrink-0">
+                  <p className="text-xs font-bold uppercase tracking-widest leading-none">Dia</p>
+                  <p className="text-lg font-black">{item.dayOfMonth}</p>
                 </div>
               </div>
-              <h4 className="text-lg font-bold text-slate-800 mb-1">{item.description}</h4>
-              <div className="flex items-center gap-2 mb-4">
+              <h4 className="text-base font-bold text-slate-800 mb-2 line-clamp-2">{item.description}</h4>
+              <div className="flex items-center gap-2 mb-3">
                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider" style={{ backgroundColor: `${cat?.color}20`, color: cat?.color }}>
                   {cat?.name}
                 </span>
                 <span className="text-xs text-slate-400">• {acc?.name}</span>
               </div>
-              <div className="pt-4 border-t border-slate-50">
-                <p className={`text-xl font-black ${item.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600'}`}>
+              <div className="pt-3 border-t border-slate-50">
+                <p className={`text-lg font-black ${item.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600'}`}>
                   {formatCurrency(item.amount)}
                 </p>
               </div>

@@ -31,8 +31,15 @@ const App: React.FC = () => {
         // ensure isAdmin flag exists and migrate admin email to match constants
         const adminEmail = INITIAL_USERS.find(x => x.id === '1')?.email ?? 'vrfranca@live.cm';
         const migratedUsers = (parsed.users || []).map(u => ({ ...u, isAdmin: (u as any).isAdmin ?? (u.id === '1'), email: u.id === '1' ? adminEmail : u.email }));
-        const migratedCurrent = parsed.currentUser ? { ...parsed.currentUser, isAdmin: (parsed.currentUser as any).isAdmin ?? (parsed.currentUser.id === '1'), email: parsed.currentUser.id === '1' ? adminEmail : parsed.currentUser.email } : null;
-        return { ...parsed, users: migratedUsers, currentUser: migratedCurrent } as AppState;
+        // Never restore currentUser from storage - always start logged out
+        return { 
+          currentUser: null,
+          users: migratedUsers, 
+          categories: parsed.categories || INITIAL_CATEGORIES,
+          accounts: parsed.accounts || INITIAL_ACCOUNTS,
+          transactions: parsed.transactions || [],
+          recurringItems: parsed.recurringItems || []
+        } as AppState;
       } catch (e) {
         console.error('Failed to parse saved state, using defaults', e);
       }
@@ -50,13 +57,44 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isUserMenuOpen, setUserMenuOpen] = useState(false);
+  const [selectedUserIdForViewing, setSelectedUserIdForViewing] = useState<string | 'all'>('all');
 
   useEffect(() => {
-    localStorage.setItem('finance_pro_state', JSON.stringify(state));
+    // Save only data, not currentUser (for session-based flow)
+    const dataToSave = {
+      users: state.users,
+      categories: state.categories,
+      accounts: state.accounts,
+      transactions: state.transactions,
+      recurringItems: state.recurringItems,
+      currentUser: null // Never persist user session
+    };
+    localStorage.setItem('finance_pro_state', JSON.stringify(dataToSave));
   }, [state]);
 
-  const filteredTransactions = useMemo(() => state.transactions.filter(t => t.userId === state.currentUser?.id), [state.transactions, state.currentUser]);
-  const filteredRecurring = useMemo(() => state.recurringItems.filter(r => r.userId === state.currentUser?.id), [state.recurringItems, state.currentUser]);
+  const filteredTransactions = useMemo(() => {
+    if (!state.currentUser) return [];
+    // Se for admin, não mostrar seus próprios dados
+    if (state.currentUser.isAdmin) {
+      const allOtherUsersTransactions = state.transactions.filter(t => t.userId !== state.currentUser?.id);
+      if (selectedUserIdForViewing === 'all') return allOtherUsersTransactions;
+      return allOtherUsersTransactions.filter(t => t.userId === selectedUserIdForViewing);
+    }
+    // Se não for admin, mostrar apenas seus próprios dados
+    return state.transactions.filter(t => t.userId === state.currentUser?.id);
+  }, [state.transactions, state.currentUser, selectedUserIdForViewing]);
+
+  const filteredRecurring = useMemo(() => {
+    if (!state.currentUser) return [];
+    // Se for admin, não mostrar seus próprios dados
+    if (state.currentUser.isAdmin) {
+      const allOtherUsersRecurring = state.recurringItems.filter(r => r.userId !== state.currentUser?.id);
+      if (selectedUserIdForViewing === 'all') return allOtherUsersRecurring;
+      return allOtherUsersRecurring.filter(r => r.userId === selectedUserIdForViewing);
+    }
+    // Se não for admin, mostrar apenas seus próprios dados
+    return state.recurringItems.filter(r => r.userId === state.currentUser?.id);
+  }, [state.recurringItems, state.currentUser, selectedUserIdForViewing]);
 
   const stats = useMemo(() => {
     const income = filteredTransactions.filter(t => t.type === 'INCOME').reduce((acc, t) => acc + t.amount, 0);
@@ -104,7 +142,16 @@ const App: React.FC = () => {
   const updateSettings = (updates: Partial<AppState>) => setState(prev => ({ ...prev, ...updates }));
 
   // User helpers
-  const switchUser = (user: User) => { setState(prev => ({ ...prev, currentUser: user })); setUserMenuOpen(false); };
+  const switchUser = (user: User) => { 
+    setState(prev => ({ ...prev, currentUser: user })); 
+    setActiveTab('dashboard'); // Reset to dashboard on login
+    setUserMenuOpen(false); 
+  };
+  const logout = () => {
+    setState(prev => ({ ...prev, currentUser: null }));
+    setActiveTab('dashboard'); // Reset to dashboard on logout
+    setSelectedUserIdForViewing('all'); // Reset user filter
+  };
   const setUserPassword = (userId: string, passwordHash: string) => setState(prev => ({ ...prev, users: prev.users.map(u => u.id === userId ? { ...u, passwordHash } : u) }));
   const addUser = (u: { name: string; username?: string; email: string; passwordHash?: string }) => {
     const newUser: User = { id: Math.random().toString(36).substr(2, 9), name: u.name, username: u.username, email: u.email, active: true, isAdmin: false, ...(u.passwordHash ? { passwordHash: u.passwordHash } : {}) };
@@ -116,22 +163,37 @@ const App: React.FC = () => {
   }
 
   const renderContent = () => {
-    switch (activeTab) {
-      case 'dashboard': return <Dashboard stats={stats} transactions={filteredTransactions} recurringItems={filteredRecurring} categories={state.categories} />;
+    // Proteger acesso de acordo com permissões
+    let effectiveTab = activeTab;
+    
+    // Redirect to dashboard if non-admin tries to access settings
+    if (activeTab === 'settings' && !state.currentUser?.isAdmin) {
+      effectiveTab = 'dashboard';
+    }
+    
+    // Redirect to dashboard if admin tries to access transactions or recurring
+    if ((activeTab === 'transactions' || activeTab === 'recurring') && state.currentUser?.isAdmin) {
+      effectiveTab = 'dashboard';
+    }
+    
+    switch (effectiveTab) {
+      case 'dashboard': return <Dashboard stats={stats} transactions={filteredTransactions} recurringItems={filteredRecurring} categories={state.categories} currentUser={state.currentUser} users={state.users} selectedUserIdForViewing={selectedUserIdForViewing} onChangeUserFilter={setSelectedUserIdForViewing} />;
       case 'transactions': return <TransactionsView transactions={filteredTransactions} categories={state.categories} accounts={state.accounts} onAdd={addTransaction} onUpdate={updateTransaction} onDelete={deleteTransaction} />;
       case 'recurring': return <RecurringView items={filteredRecurring} categories={state.categories} accounts={state.accounts} onAdd={addRecurring} onUpdate={updateRecurring} onDelete={deleteRecurring} />;
       case 'settings': return <SettingsView state={state} onUpdate={updateSettings} />;
-      case 'reports': return <ReportsView transactions={filteredTransactions} recurringItems={filteredRecurring} categories={state.categories} />;
-      default: return <Dashboard stats={stats} transactions={filteredTransactions} categories={state.categories} />;
+      case 'reports': return <ReportsView transactions={filteredTransactions} recurringItems={filteredRecurring} categories={state.categories} currentUser={state.currentUser} users={state.users} selectedUserIdForViewing={selectedUserIdForViewing} onChangeUserFilter={setSelectedUserIdForViewing} />;
+      default: return <Dashboard stats={stats} transactions={filteredTransactions} recurringItems={filteredRecurring} categories={state.categories} currentUser={state.currentUser} users={state.users} selectedUserIdForViewing={selectedUserIdForViewing} onChangeUserFilter={setSelectedUserIdForViewing} />;
     }
   };
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'transactions', label: 'Movimentações', icon: ArrowLeftRight },
-    { id: 'recurring', label: 'Recorrentes', icon: Repeat },
+    ...(state.currentUser?.isAdmin ? [] : [
+      { id: 'transactions', label: 'Movimentações', icon: ArrowLeftRight },
+      { id: 'recurring', label: 'Recorrentes', icon: Repeat },
+    ]),
     { id: 'reports', label: 'Relatórios', icon: PieChart },
-    { id: 'settings', label: 'Parâmetros', icon: Settings }
+    ...(state.currentUser?.isAdmin ? [{ id: 'settings', label: 'Parâmetros', icon: Settings }] : [])
   ];
 
   return (
@@ -175,7 +237,7 @@ const App: React.FC = () => {
                   <div className="text-xs text-slate-500">{state.currentUser?.email}</div>
                 </div>
                 <div className="border-t border-slate-700 mt-2 pt-2">
-                  <button onClick={() => setState(prev => ({ ...prev, currentUser: null }))} className="w-full text-left px-4 py-2 text-sm text-rose-400 hover:bg-slate-700 hover:text-white">Sair</button>
+                  <button onClick={() => logout()} className="w-full text-left px-4 py-2 text-sm text-rose-400 hover:bg-slate-700 hover:text-white">Sair</button>
                 </div>
               </div>
             )}
