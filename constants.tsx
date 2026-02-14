@@ -2,8 +2,8 @@
 import { Category, Account, User } from './types';
 
 export const INITIAL_USERS: User[] = [
-  { id: '1', name: 'Administrador', email: 'admin@finance.pro' },
-  { id: '2', name: 'Usuário Teste', email: 'teste@finance.pro' }
+  { id: '1', name: 'Administrador', username: 'admin', email: 'vrfranca@live.cm', active: true, isAdmin: true },
+  { id: '2', name: 'Usuário Teste', username: 'teste', email: 'teste@finance.pro', active: true, isAdmin: false }
 ];
 
 export const INITIAL_CATEGORIES: Category[] = [

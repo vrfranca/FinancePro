@@ -42,6 +42,10 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  passwordHash?: string;
+  active?: boolean;
+  username?: string;
+  isAdmin?: boolean;
 }
 
 export interface AppState {
