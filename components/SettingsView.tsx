@@ -15,7 +15,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate }) => {
 
   // category/account forms
   const [catForm, setCatForm] = useState<{ name: string; type: TransactionType; color: string }>({ name: '', type: 'EXPENSE', color: '#ef4444' });
-  const [accForm, setAccForm] = useState({ name: '', initialBalance: '0' });
+  const [accForm, setAccForm] = useState<{ name: string; initialBalance: string; type: 'CASH'|'BANK'|'CREDIT'; dueDay?: string }>({ name: '', initialBalance: '0', type: 'BANK' });
 
   // users: add + password modal
   const [showAddUserModal, setShowAddUserModal] = useState(false);
@@ -39,8 +39,18 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate }) => {
   };
 
   const handleOpenAccModal = (item?: Account) => {
-    if (item) { setEditingItem(item); setAccForm({ name: item.name, initialBalance: item.initialBalance.toString() }); }
-    else { setEditingItem(null); setAccForm({ name: '', initialBalance: '0' }); }
+    if (item) {
+      setEditingItem(item);
+      setAccForm({
+        name: item.name,
+        initialBalance: item.initialBalance.toString(),
+        type: item.type,
+        dueDay: item.dueDay?.toString()
+      });
+    } else {
+      setEditingItem(null);
+      setAccForm({ name: '', initialBalance: '0', type: 'BANK' });
+    }
     setModalType('account');
   };
 
@@ -53,8 +63,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate }) => {
 
   const handleSaveAccount = (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingItem) onUpdate({ accounts: state.accounts.map(a => a.id === editingItem.id ? { ...a, name: accForm.name, initialBalance: parseFloat(accForm.initialBalance) } : a) });
-    else onUpdate({ accounts: [...state.accounts, { id: Math.random().toString(36).substr(2,9), name: accForm.name, type: 'BANK', initialBalance: parseFloat(accForm.initialBalance) }] });
+    const numericBal = parseFloat(accForm.initialBalance);
+    const due = accForm.dueDay ? parseInt(accForm.dueDay) : undefined;
+    if (editingItem) {
+      onUpdate({ accounts: state.accounts.map(a => a.id === editingItem.id ? { ...a, name: accForm.name, initialBalance: numericBal, type: accForm.type, dueDay: accForm.type === 'CREDIT' ? due : undefined } : a) });
+    } else {
+      onUpdate({ accounts: [...state.accounts, { id: Math.random().toString(36).substr(2,9), userId: state.currentUser?.id || '1', name: accForm.name, type: accForm.type, initialBalance: numericBal, ...(accForm.type === 'CREDIT' && due ? { dueDay: due } : {}) }] });
+    }
     setModalType(null);
   };
 
@@ -78,7 +93,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate }) => {
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <div className="flex border-b border-slate-200">
-        {[ { id: 'categories', label: 'Categorias', icon: Tag }, { id: 'accounts', label: 'Contas', icon: CreditCard }, { id: 'users', label: 'Usuários', icon: UsersIcon } ].map(tab => (
+        {[ { id: 'categories', label: 'Categorias', icon: Tag },
+           ...(!state.currentUser?.isAdmin ? [{ id: 'accounts', label: 'Contas', icon: CreditCard }] : []),
+           { id: 'users', label: 'Usuários', icon: UsersIcon } ].map(tab => (
           <button key={tab.id} onClick={() => setActiveSubTab(tab.id as any)} className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all border-b-2 ${activeSubTab === tab.id ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}><tab.icon className="w-4 h-4" />{tab.label}</button>
         ))}
       </div>
@@ -99,14 +116,18 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate }) => {
           </div>
         )}
 
-        {activeSubTab === 'accounts' && (
+        {activeSubTab === 'accounts' && !state.currentUser?.isAdmin && (
           <div className="p-6 space-y-6">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-bold text-slate-800">Contas e Bancos</h3>
               <button onClick={() => handleOpenAccModal()} className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-bold hover:bg-indigo-100 transition-colors"><Plus className="w-4 h-4" /> Adicionar Conta</button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{state.accounts.map(acc => (
-              <div key={acc.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl group border border-transparent hover:border-slate-200 transition-all"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-slate-400 border border-slate-100 shadow-sm"><CreditCard className="w-5 h-5" /></div><div><p className="font-bold text-slate-700 text-sm">{acc.name}</p><p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Saldo Inicial: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(acc.initialBalance)}</p></div></div><div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all"><button onClick={() => { setEditingItem(acc); setModalType('account'); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-all shadow-sm"><Edit2 className="w-4 h-4" /></button><button onClick={() => removeAccount(acc.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-white rounded-lg transition-all shadow-sm"><Trash2 className="w-4 h-4" /></button></div></div>
+              <div key={acc.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl group border border-transparent hover:border-slate-200 transition-all"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-slate-400 border border-slate-100 shadow-sm"><CreditCard className="w-5 h-5" /></div><div><p className="font-bold text-slate-700 text-sm">{acc.name}</p><p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
+                    {acc.type === 'CREDIT' ? 'Cartão' : acc.type === 'BANK' ? 'Banco' : 'Carteira'}{' '}
+                    • Saldo: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(acc.initialBalance)}
+                    {acc.type === 'CREDIT' && acc.dueDay ? ` • venc: dia ${acc.dueDay}` : ''}
+                  </p></div></div><div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all"><button onClick={() => { setEditingItem(acc); setModalType('account'); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-all shadow-sm"><Edit2 className="w-4 h-4" /></button><button onClick={() => removeAccount(acc.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-white rounded-lg transition-all shadow-sm"><Trash2 className="w-4 h-4" /></button></div></div>
             ))}</div>
           </div>
         )}
@@ -154,7 +175,45 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate }) => {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50"><h3 className="text-lg font-bold text-slate-800">{editingItem ? 'Editar Conta' : 'Nova Conta'}</h3><button onClick={() => setModalType(null)} className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100"><X className="w-5 h-5" /></button></div>
-            <form onSubmit={handleSaveAccount} className="p-6 space-y-4"><div><label className="block text-xs font-bold text-slate-700 uppercase mb-2">Nome do Banco / Carteira</label><input required type="text" className="w-full px-4 py-2 bg-white border border-slate-300 rounded-xl" value={accForm.name} onChange={e => setAccForm({...accForm, name: e.target.value})} /></div><div><label className="block text-xs font-bold text-slate-700 uppercase mb-2">Saldo Inicial</label><input required type="number" step="0.01" className="w-full px-4 py-2 bg-white border border-slate-300 rounded-xl" value={accForm.initialBalance} onChange={e => setAccForm({...accForm, initialBalance: e.target.value})} /></div><button type="submit" className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl">Salvar Alterações</button></form>
+            <form onSubmit={handleSaveAccount} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-2">Nome</label>
+                <input required type="text" className="w-full px-4 py-2 bg-white border border-slate-300 rounded-xl" value={accForm.name} onChange={e => setAccForm({...accForm, name: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-2">Tipo de Conta</label>
+                <select
+                  required
+                  className="w-full px-4 py-2 bg-white border border-slate-300 rounded-xl"
+                  value={accForm.type}
+                  onChange={e => setAccForm({...accForm, type: e.target.value as any})}
+                >
+                  <option value="CASH">Carteira</option>
+                  <option value="BANK">Banco</option>
+                  <option value="CREDIT">Cartão de Crédito</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-2">
+                  {accForm.type === 'CREDIT' ? 'Limite do Cartão' : 'Saldo Inicial'}
+                </label>
+                <input required type="number" step="0.01" className="w-full px-4 py-2 bg-white border border-slate-300 rounded-xl" value={accForm.initialBalance} onChange={e => setAccForm({...accForm, initialBalance: e.target.value})} />
+              </div>
+              {accForm.type === 'CREDIT' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-2">Dia de Vencimento</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    className="w-full px-4 py-2 bg-white border border-slate-300 rounded-xl"
+                    value={accForm.dueDay || ''}
+                    onChange={e => setAccForm({...accForm, dueDay: e.target.value})}
+                  />
+                </div>
+              )}
+              <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl">Salvar Alterações</button>
+            </form>
           </div>
         </div>
       )}

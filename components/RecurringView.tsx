@@ -23,6 +23,7 @@ const RecurringView: React.FC<RecurringViewProps> = ({ items, categories, accoun
     categoryId: categories[0]?.id || '',
     accountId: accounts[0]?.id || '',
     type: 'EXPENSE' as TransactionType,
+    occurrences: ''
   };
   const [formData, setFormData] = useState(initialFormState);
 
@@ -37,7 +38,8 @@ const RecurringView: React.FC<RecurringViewProps> = ({ items, categories, accoun
       dayOfMonth: item.dayOfMonth,
       categoryId: item.categoryId,
       accountId: item.accountId,
-      type: item.type
+      type: item.type,
+      occurrences: item.occurrences?.toString() || ''
     });
     setModalOpen(true);
   };
@@ -50,14 +52,16 @@ const RecurringView: React.FC<RecurringViewProps> = ({ items, categories, accoun
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const data = {
+    const numeric = {
       ...formData,
       amount: parseFloat(formData.amount),
+      occurrences: formData.occurrences ? parseInt(formData.occurrences) : undefined,
     };
     if (editingId) {
-      onUpdate(editingId, data);
+      onUpdate(editingId, numeric);
     } else {
-      onAdd(data);
+      // include startDate for new items
+      onAdd({ ...numeric, startDate: new Date().toISOString() });
     }
     setModalOpen(false);
     setEditingId(null);
@@ -181,6 +185,17 @@ const RecurringView: React.FC<RecurringViewProps> = ({ items, categories, accoun
                     />
                   </div>
                 </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Parcelas (opcional)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    className="w-full px-4 py-3 bg-white border border-slate-300 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none text-slate-900 font-medium transition-all"
+                    value={formData.occurrences}
+                    onChange={(e) => setFormData({...formData, occurrences: e.target.value})}
+                    placeholder="quantidade de meses para repetir"
+                  />
+                </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -203,7 +218,7 @@ const RecurringView: React.FC<RecurringViewProps> = ({ items, categories, accoun
                       onChange={(e) => setFormData({...formData, accountId: e.target.value})}
                     >
                       {accounts.map(a => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
+                        <option key={a.id} value={a.id}>{a.name}{a.type === 'CREDIT' && a.dueDay ? ` (venc: ${a.dueDay})` : ''}</option>
                       ))}
                     </select>
                   </div>

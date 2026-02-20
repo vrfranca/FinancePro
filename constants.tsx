@@ -16,7 +16,9 @@ export const INITIAL_CATEGORIES: Category[] = [
 ];
 
 export const INITIAL_ACCOUNTS: Account[] = [
-  { id: 'a1', name: 'Carteira', type: 'CASH', initialBalance: 0 },
-  { id: 'a2', name: 'Banco Principal', type: 'BANK', initialBalance: 1500 },
-  { id: 'a3', name: 'Cartão de Crédito', type: 'CREDIT', initialBalance: 0 },
+  // these sample accounts belong to the demo user (id '2'); admin won't see them
+  { id: 'a1', userId: '2', name: 'Carteira', type: 'CASH', initialBalance: 0 },
+  { id: 'a2', userId: '2', name: 'Banco Principal', type: 'BANK', initialBalance: 1500 },
+  // example credit card with R$ 2.000,00 limit and due day at 5th
+  { id: 'a3', userId: '2', name: 'Cartão de Crédito', type: 'CREDIT', initialBalance: 2000, dueDay: 5 },
 ];

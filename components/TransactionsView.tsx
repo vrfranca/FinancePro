@@ -14,6 +14,23 @@ interface TransactionsViewProps {
 
 const TransactionsView: React.FC<TransactionsViewProps> = ({ transactions, categories, accounts, onAdd, onUpdate, onDelete }) => {
   const [isModalOpen, setModalOpen] = useState(false);
+
+  // helper used in table and grouping: for credit card accounts use dueDay to shift
+  // transaction to the billing month
+  const getDueMonth = (t: Transaction) => {
+    const acc = accounts.find(a => a.id === t.accountId);
+    if (acc?.type === 'CREDIT' && acc.dueDay) {
+      const date = new Date(t.date);
+      let month = date.getMonth();
+      let year = date.getFullYear();
+      if (date.getDate() > acc.dueDay) {
+        month += 1;
+        if (month > 11) { month = 0; year += 1; }
+      }
+      return `${year}-${(month+1).toString().padStart(2,'0')}`;
+    }
+    return '';
+  };
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -102,6 +119,7 @@ const TransactionsView: React.FC<TransactionsViewProps> = ({ transactions, categ
                 <th className="px-6 py-4">Descrição</th>
                 <th className="px-6 py-4">Conta</th>
                 <th className="px-6 py-4">Categoria</th>
+                <th className="px-6 py-4">Vencimento</th>
                 <th className="px-6 py-4 text-right">Valor</th>
                 <th className="px-6 py-4 text-center">Ações</th>
               </tr>
@@ -120,6 +138,9 @@ const TransactionsView: React.FC<TransactionsViewProps> = ({ transactions, categ
                       {t.isRecurring && <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest bg-indigo-50 px-1.5 py-0.5 rounded">Recorrente</span>}
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-500">{acc?.name}</td>
+                    <td className="px-6 py-4 text-sm text-slate-600">
+                      {acc?.type === 'CREDIT' ? getDueMonth(t) : ''}
+                    </td>
                     <td className="px-6 py-4 text-sm">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: `${cat?.color}20`, color: cat?.color }}>
                         {cat?.name}
@@ -231,7 +252,7 @@ const TransactionsView: React.FC<TransactionsViewProps> = ({ transactions, categ
                       onChange={(e) => setFormData({...formData, accountId: e.target.value})}
                     >
                       {accounts.map(a => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
+                        <option key={a.id} value={a.id}>{a.name}{a.type === 'CREDIT' && a.dueDay ? ` (venc: ${a.dueDay})` : ''}</option>
                       ))}
                     </select>
                   </div>

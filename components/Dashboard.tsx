@@ -1,283 +1,213 @@
-
 import React, { useMemo } from 'react';
-import { TrendingUp, TrendingDown, Wallet, Calendar, PieChart } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart as PieChartIcon, Pie } from 'recharts';
-import { Transaction, Category, RecurringItem, User } from '../types';
+import { Calendar, PieChart, TrendingUp, Wallet } from 'lucide-react';
+import { 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
+  ResponsiveContainer, Cell, PieChart as PieChartIcon, Pie, Legend 
+} from 'recharts';
+import { Transaction, Category, RecurringItem, User, Account } from '../types';
 
 interface DashboardProps {
-  stats: {
-    totalIncome: number;
-    totalExpense: number;
-    balance: number;
-  };
   transactions: Transaction[];
   recurringItems: RecurringItem[];
   categories: Category[];
+  accounts: Account[];
   currentUser: User | null;
   users: User[];
   selectedUserIdForViewing: string | 'all';
   onChangeUserFilter: (userId: string | 'all') => void;
+  selectedMonth: number;
+  setSelectedMonth: (m: number) => void;
+  selectedYear: number;
+  setSelectedYear: (y: number) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, recurringItems, categories, currentUser, users, selectedUserIdForViewing, onChangeUserFilter }) => {
-  const formatCurrency = (val: number) => 
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+const Dashboard: React.FC<DashboardProps> = ({ 
+  transactions, recurringItems, categories, accounts, currentUser, users, 
+  selectedUserIdForViewing, onChangeUserFilter,
+  selectedMonth, setSelectedMonth, selectedYear, setSelectedYear 
+}) => {
 
-  // Recalculate stats based on filtered data
-  const recalculatedStats = useMemo(() => {
-    const income = transactions.filter(t => t.type === 'INCOME').reduce((acc, t) => acc + t.amount, 0);
-    const expenses = transactions.filter(t => t.type === 'EXPENSE').reduce((acc, t) => acc + t.amount, 0);
+  const monthsLabels = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+  ];
 
-    const recurringIncome = recurringItems.filter(r => r.type === 'INCOME').reduce((acc, r) => acc + r.amount, 0);
-    const recurringExpenses = recurringItems.filter(r => r.type === 'EXPENSE').reduce((acc, r) => acc + r.amount, 0);
+  const yearsOptions = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
+
+  // 1. Filtro de dados centralizado
+  const filteredData = useMemo(() => {
+    const filterByDateAndUser = (item: any) => {
+      const matchesUser = currentUser?.isAdmin 
+        ? (selectedUserIdForViewing === 'all' || item.userId === selectedUserIdForViewing)
+        : item.userId === currentUser?.id;
+
+      if (item.date) {
+        const d = new Date(item.date);
+        return matchesUser && d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
+      }
+      
+      if (item.startDate) {
+        const start = new Date(item.startDate);
+        const diff = (selectedYear - start.getFullYear()) * 12 + (selectedMonth - start.getMonth());
+        const isActive = diff >= 0 && (item.occurrences === undefined || diff < item.occurrences);
+        return matchesUser && isActive;
+      }
+      return matchesUser;
+    };
 
     return {
-      totalIncome: income + recurringIncome,
-      totalExpense: expenses + recurringExpenses,
-      balance: income - expenses + recurringIncome - recurringExpenses
+      transactions: transactions.filter(filterByDateAndUser),
+      recurringItems: recurringItems.filter(filterByDateAndUser)
     };
-  }, [transactions, recurringItems]);
+  }, [transactions, recurringItems, currentUser, selectedUserIdForViewing, selectedMonth, selectedYear]);
 
-  // Combinar transações com recorrências do mês atual
-  const now = new Date();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
+  // 2. Despesas por Categoria (Pizza)
+  const categoryExpenseData = useMemo(() => {
+    return categories
+      .filter(c => c.type === 'EXPENSE')
+      .map(c => {
+        const val = filteredData.transactions.filter(t => t.categoryId === c.id && t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0) +
+                    filteredData.recurringItems.filter(r => r.categoryId === c.id && r.type === 'EXPENSE').reduce((s, r) => s + r.amount, 0);
+        return { name: c.name, value: val, color: c.color };
+      })
+      .filter(d => d.value > 0);
+  }, [categories, filteredData]);
 
-  const recurringForCurrentMonth = recurringItems.map(r => {
-    // Cria uma data para o item recorrente usando o dia do mês atual
-    const recurringDate = new Date(currentYear, currentMonth, r.dayOfMonth);
-    return {
-      id: `recurring-${r.id}`,
-      date: recurringDate.toISOString().split('T')[0],
-      description: r.description,
-      categoryId: r.categoryId,
-      type: r.type,
-      amount: r.amount,
-      isRecurring: true
-    };
-  });
+  // 3. Receitas por Conta (Pizza)
+  const accountIncomeData = useMemo(() => {
+    const colors = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899'];
+    return accounts
+      .filter(acc => currentUser?.isAdmin ? (selectedUserIdForViewing === 'all' || acc.userId === selectedUserIdForViewing) : acc.userId === currentUser?.id)
+      .map((acc, idx) => {
+        const val = filteredData.transactions.filter(t => t.accountId === acc.id && t.type === 'INCOME').reduce((s, t) => s + t.amount, 0) +
+                    filteredData.recurringItems.filter(r => r.accountId === acc.id && r.type === 'INCOME').reduce((s, r) => s + r.amount, 0);
+        return { name: acc.name, value: val, color: colors[idx % colors.length] };
+      })
+      .filter(d => d.value > 0);
+  }, [accounts, filteredData, currentUser, selectedUserIdForViewing]);
 
-  // Combinar e ordenar por data (mais recentes primeiro)
-  const allTransactions = [...transactions, ...recurringForCurrentMonth].sort((a, b) => {
-    return new Date(b.date).getTime() - new Date(a.date).getTime();
-  });
-
-  const recentTransactions = allTransactions.slice(0, 5);
-
-  // Chart Data Preparation - incluindo itens recorrentes
-  const categoryData = categories
-    .filter(c => c.type === 'EXPENSE')
-    .map(c => {
-      const transactionAmount = transactions
-        .filter(t => t.categoryId === c.id && t.type === 'EXPENSE')
-        .reduce((sum, t) => sum + t.amount, 0);
-      const recurringAmount = recurringItems
-        .filter(r => r.categoryId === c.id && r.type === 'EXPENSE')
-        .reduce((sum, r) => sum + r.amount, 0);
-      return { name: c.name, value: transactionAmount + recurringAmount, color: c.color };
-    })
-    .filter(d => d.value > 0);
-
-  const last7Days = Array.from({ length: 7 }).map((_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
-    const dateStr = d.toISOString().split('T')[0];
-    const dayIncome = transactions
-      .filter(t => t.date === dateStr && t.type === 'INCOME')
-      .reduce((sum, t) => sum + t.amount, 0);
-    const dayExpense = transactions
-      .filter(t => t.date === dateStr && t.type === 'EXPENSE')
-      .reduce((sum, t) => sum + t.amount, 0);
-    // Adiciona distribuição diária dos itens recorrentes (sprecha pelo mês)
-    const recurringIncomeDaily = recurringItems
-      .filter(r => r.type === 'INCOME' && r.dayOfMonth === d.getDate())
-      .reduce((sum, r) => sum + r.amount, 0);
-    const recurringExpenseDaily = recurringItems
-      .filter(r => r.type === 'EXPENSE' && r.dayOfMonth === d.getDate())
-      .reduce((sum, r) => sum + r.amount, 0);
-    return {
-      day: d.toLocaleDateString('pt-BR', { weekday: 'short' }),
-      receita: dayIncome + recurringIncomeDaily,
-      despesa: dayExpense + recurringExpenseDaily
-    };
-  });
+  // 4. Atividade Diária (Tipo Area - igual ao ReportsView)
+  const dailyActivityData = useMemo(() => {
+    const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+    return Array.from({ length: daysInMonth }).map((_, i) => {
+      const day = i + 1;
+      const dayIncome = filteredData.transactions.filter(t => new Date(t.date).getDate() === day && t.type === 'INCOME').reduce((s, t) => s + t.amount, 0) +
+                        filteredData.recurringItems.filter(r => r.dayOfMonth === day && r.type === 'INCOME').reduce((s, r) => s + r.amount, 0);
+      const dayExpense = filteredData.transactions.filter(t => new Date(t.date).getDate() === day && t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0) +
+                         filteredData.recurringItems.filter(r => r.dayOfMonth === day && r.type === 'EXPENSE').reduce((s, r) => s + r.amount, 0);
+      return { 
+        day: `Dia ${day}`, 
+        receita: dayIncome, 
+        despesa: dayExpense 
+      };
+    });
+  }, [filteredData, selectedMonth, selectedYear]);
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
-      {/* User Filter for Admin */}
-      {currentUser?.isAdmin && (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <label className="block text-sm font-medium text-slate-700 mb-3">Filtrar por Usuário</label>
-          <select 
-            value={selectedUserIdForViewing} 
-            onChange={(e) => onChangeUserFilter(e.target.value)}
-            className="w-full md:w-64 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-          >
-            <option value="all">Todos os usuários (consolidado)</option>
-            {users
-              .filter(u => u.id !== currentUser.id)
-              .map(u => (
-                <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
-              ))
-            }
+      {/* FILTROS */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-end">
+        {currentUser?.isAdmin && (
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-sm font-medium text-slate-700 mb-2">Usuário</label>
+            <select value={selectedUserIdForViewing} onChange={(e) => onChangeUserFilter(e.target.value)} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+              <option value="all">Todos os usuários</option>
+              {users.filter(u => u.id !== currentUser.id).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+        )}
+        <div className="flex-1 min-w-[150px]">
+          <label className="block text-sm font-medium text-slate-700 mb-2">Mês</label>
+          <select value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+            {monthsLabels.map((m, i) => <option key={i} value={i}>{m}</option>)}
           </select>
         </div>
-      )}
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600">
-              <TrendingUp className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Receitas</p>
-              <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(recalculatedStats.totalIncome)}</h3>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="w-12 h-12 bg-rose-100 rounded-xl flex items-center justify-center text-rose-600">
-              <TrendingDown className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Despesas</p>
-              <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(recalculatedStats.totalExpense)}</h3>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600">
-              <Wallet className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Saldo Líquido</p>
-              <h3 className={`text-2xl font-bold ${recalculatedStats.balance >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>
-                {formatCurrency(recalculatedStats.balance)}
-              </h3>
-            </div>
-          </div>
+        <div className="flex-1 min-w-[120px]">
+          <label className="block text-sm font-medium text-slate-700 mb-2">Ano</label>
+          <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+            {yearsOptions.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
         </div>
       </div>
 
+      {/* GRÁFICOS SUPERIORES (PIZZA) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Weekly Activity */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h4 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-indigo-500" />
-            Atividade Semanal
-          </h4>
+          <h4 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 text-left"><PieChart className="w-5 h-5 text-rose-500" /> Despesas por Categoria</h4>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={last7Days}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-                <Tooltip 
-                  cursor={{fill: '#f8fafc'}}
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                />
-                <Bar dataKey="receita" fill="#10b981" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="despesa" fill="#ef4444" radius={[4, 4, 0, 0]} />
-              </BarChart>
+              <PieChartIcon>
+                <Pie data={categoryExpenseData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                  {categoryExpenseData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                </Pie>
+                <Tooltip />
+                <Legend verticalAlign="bottom" height={36}/>
+              </PieChartIcon>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Expenses by Category */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h4 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-            <PieChart className="w-5 h-5 text-indigo-500" />
-            Despesas por Categoria
-          </h4>
-          <div className="h-64 flex items-center justify-center">
-            {categoryData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChartIcon>
-                  <Pie
-                    data={categoryData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {categoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                  />
-                </PieChartIcon>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-slate-400 text-sm italic">Nenhuma despesa registrada.</p>
-            )}
+          <h4 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 text-left"><Wallet className="w-5 h-5 text-emerald-500" /> Receitas por Conta</h4>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChartIcon>
+                <Pie data={accountIncomeData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                  {accountIncomeData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                </Pie>
+                <Tooltip />
+                <Legend verticalAlign="bottom" height={36}/>
+              </PieChartIcon>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      {/* Recent Transactions */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-          <h4 className="text-lg font-bold text-slate-800">Lançamentos Recentes</h4>
-          <button className="text-indigo-600 text-sm font-semibold hover:text-indigo-700 transition-colors">
-            Ver Todos
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider">
-                <th className="px-6 py-4">Data</th>
-                <th className="px-6 py-4">Descrição</th>
-                <th className="px-6 py-4">Categoria</th>
-                <th className="px-6 py-4 text-right">Valor</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {recentTransactions.map(t => {
-                const cat = categories.find(c => c.id === t.categoryId);
-                return (
-                  <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 text-sm text-slate-600">{new Date(t.date).toLocaleDateString('pt-BR')}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-slate-800">
-                      <div className="flex items-center gap-2">
-                        {t.description}
-                        {(t as any).isRecurring && (
-                          <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-indigo-100 text-indigo-700">
-                            Recorrente
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: `${cat?.color}20`, color: cat?.color }}>
-                        {cat?.name}
-                      </span>
-                    </td>
-                    <td className={`px-6 py-4 text-sm font-bold text-right ${t.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {t.type === 'INCOME' ? '+' : '-'} {formatCurrency(t.amount)}
-                    </td>
-                  </tr>
-                );
-              })}
-              {recentTransactions.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
-                    Nenhum lançamento encontrado.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {/* GRÁFICO INFERIOR (AREA) */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+        <h4 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 text-left">
+          <TrendingUp className="w-5 h-5 text-indigo-500" /> Fluxo de Caixa Diário - {monthsLabels[selectedMonth]}
+        </h4>
+        <div className="h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={dailyActivityData}>
+              <defs>
+                <linearGradient id="colorIncomeDash" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="colorExpenseDash" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2}/>
+                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10}} />
+              <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+              <Tooltip 
+                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+              />
+              <Legend verticalAlign="top" align="right" height={36} />
+              <Area 
+                name="Receita" 
+                type="monotone" 
+                dataKey="receita" 
+                stroke="#10b981" 
+                fillOpacity={1} 
+                fill="url(#colorIncomeDash)" 
+                strokeWidth={3} 
+              />
+              <Area 
+                name="Despesa" 
+                type="monotone" 
+                dataKey="despesa" 
+                stroke="#ef4444" 
+                fillOpacity={1} 
+                fill="url(#colorExpenseDash)" 
+                strokeWidth={3} 
+              />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
       </div>
     </div>
