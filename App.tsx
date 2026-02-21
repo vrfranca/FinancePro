@@ -101,7 +101,16 @@ const App: React.FC = () => {
     return state.recurringItems.filter(r => r.userId === state.currentUser?.id);
   }, [state.recurringItems, state.currentUser, selectedUserIdForViewing]);
 
+  // 1. Filtrar Categorias por Usuário
+  const filteredCategories = useMemo(() => {
+    if (!state.currentUser) return [];
+    // Se for admin, talvez ele veja todas para gestão, 
+    // mas seguindo sua regra: cada um vê a sua.
+    return state.categories.filter(c => c.userId === state.currentUser?.id);
+  }, [state.categories, state.currentUser]);
+
   // only accounts owned by current user (admins have none)
+  // 2. O filteredAccounts você já tem, mas garanta que ele é usado em todo lugar
   const filteredAccounts = useMemo(() => {
     if (!state.currentUser) return [];
     return state.accounts.filter(a => a.userId === state.currentUser!.id);
@@ -194,47 +203,103 @@ const App: React.FC = () => {
   const renderContent = () => {
     let effectiveTab = activeTab;
     
-    if (activeTab === 'settings' && !state.currentUser?.isAdmin) effectiveTab = 'dashboard';
-    if ((activeTab === 'transactions' || activeTab === 'recurring' || activeTab === 'accounts') && state.currentUser?.isAdmin) {
-      effectiveTab = 'dashboard';
-    }
-    
-    // Criamos um objeto com as props comuns para não repetir código
-    const dashboardProps = {
-      stats: stats,
-      transactions: state.transactions, // Passamos a lista bruta, o Dashboard filtra
-      recurringItems: state.recurringItems,
-      categories: state.categories,
-      accounts: state.accounts,
-      currentUser: state.currentUser,
-      users: state.users,
-      selectedUserIdForViewing: selectedUserIdForViewing,
-      onChangeUserFilter: setSelectedUserIdForViewing,
-      selectedMonth: selectedMonth,
-      setSelectedMonth: setSelectedMonth,
-      selectedYear: selectedYear,
-      setSelectedYear: setSelectedYear
-    };
+    // Segurança: Impede usuário comum de acessar aba de admin e vice-versa
+    if (activeTab === 'users_admin' && !state.currentUser?.isAdmin) effectiveTab = 'dashboard';
+    if (activeTab === 'settings' && state.currentUser?.isAdmin) effectiveTab = 'users_admin';
 
     switch (effectiveTab) {
-      case 'dashboard': return <Dashboard {...dashboardProps} />;
-      case 'transactions': return <TransactionsView transactions={filteredTransactions} categories={state.categories} accounts={filteredAccounts} onAdd={addTransaction} onUpdate={updateTransaction} onDelete={deleteTransaction} />;
-      case 'recurring': return <RecurringView items={filteredRecurring} categories={state.categories} accounts={filteredAccounts} onAdd={addRecurring} onUpdate={updateRecurring} onDelete={deleteRecurring} />;
-      case 'accounts': return <AccountsView accounts={filteredAccounts} onAdd={addAccount} onUpdate={updateAccount} onDelete={deleteAccount} />;
-      case 'settings': return <SettingsView state={state} onUpdate={updateSettings} />;
-      case 'reports': return <ReportsView {...dashboardProps} />; // Reports também pode usar os mesmos filtros
-      default: return <Dashboard {...dashboardProps} />;
+      case 'dashboard':
+        return (
+          <Dashboard 
+            stats={stats}
+            transactions={state.transactions}
+            recurringItems={state.recurringItems}
+            categories={state.categories}
+            accounts={state.accounts}
+            currentUser={state.currentUser}
+            users={state.users}
+            selectedUserIdForViewing={state.currentUser?.isAdmin ? 'all' : state.currentUser?.id}
+            onChangeUserFilter={setSelectedUserIdForViewing}
+            selectedMonth={selectedMonth}
+            setSelectedMonth={setSelectedMonth}
+            selectedYear={selectedYear}
+            setSelectedYear={setSelectedYear}
+          />
+        );
+
+      case 'transactions':
+        return <TransactionsView transactions={filteredTransactions} categories={state.categories} accounts={filteredAccounts} onAdd={addTransaction} onUpdate={updateTransaction} onDelete={deleteTransaction} />;
+
+      case 'recurring':
+        return <RecurringView items={filteredRecurring} categories={state.categories} accounts={filteredAccounts} onAdd={addRecurring} onUpdate={updateRecurring} onDelete={deleteRecurring} />;
+
+      case 'settings':
+        // VISÃO DO USUÁRIO COMUM (Categorias e Contas)
+        return (
+          <SettingsView 
+            state={state} 
+            onUpdate={(updates) => setState(prev => ({ ...prev, ...updates }))} 
+            onlyUsers={false} 
+          />
+        );
+
+      case 'users_admin':
+        // VISÃO DO ADMIN (Apenas lista de usuários)
+        return (
+          <SettingsView 
+            state={state} 
+            onUpdate={(updates) => setState(prev => ({ ...prev, ...updates }))} 
+            onlyUsers={true} 
+          />
+        );
+
+      case 'reports':
+        return (
+          <ReportsView 
+            stats={stats}
+            transactions={state.transactions}
+            recurringItems={state.recurringItems}
+            categories={state.categories}
+            accounts={state.accounts}
+            currentUser={state.currentUser}
+            users={state.users}
+            selectedUserIdForViewing={state.currentUser?.isAdmin ? 'all' : state.currentUser?.id}
+            selectedMonth={selectedMonth}
+            setSelectedMonth={setSelectedMonth}
+            selectedYear={selectedYear}
+            setSelectedYear={setSelectedYear}
+          />
+        );
+
+      default:
+        return <Dashboard 
+          stats={stats}
+          transactions={state.transactions}
+          recurringItems={state.recurringItems}
+          categories={state.categories}
+          accounts={state.accounts}
+          currentUser={state.currentUser}
+          users={state.users}
+          selectedUserIdForViewing={state.currentUser?.isAdmin ? 'all' : state.currentUser?.id}
+          onChangeUserFilter={setSelectedUserIdForViewing}
+          selectedMonth={selectedMonth}
+          setSelectedMonth={setSelectedMonth}
+          selectedYear={selectedYear}
+          setSelectedYear={setSelectedYear}
+        />;
     }
   };
 
     const menuItems = [
       { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
       ...(state.currentUser?.isAdmin ? [
-        { id: 'settings', label: 'Parâmetros', icon: Settings }
+        // Menu exclusivo do Admin
+        { id: 'users_admin', label: 'Usuários', icon: UserIcon }, 
       ] : [
-        { id: 'accounts', label: 'Contas', icon: CreditCard },
+        // Menu exclusivo do Usuário
         { id: 'transactions', label: 'Movimentações', icon: ArrowLeftRight },
         { id: 'recurring', label: 'Recorrentes', icon: Repeat },
+        { id: 'settings', label: 'Parâmetros', icon: Settings }, // Agora usuários comuns acessam aqui
       ]),
       { id: 'reports', label: 'Relatórios', icon: PieChart },
     ];
@@ -310,101 +375,74 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4 md:gap-8">
-            <div className="hidden lg:flex items-center gap-6 border-r border-slate-100 pr-6">
-              {state.accounts
-                ?.filter(acc => {
-                  if (state.currentUser?.isAdmin) {
-                    return selectedUserIdForViewing === 'all' || acc.userId === selectedUserIdForViewing;
-                  }
-                  return acc.userId === state.currentUser?.id;
-                })
-                .map((acc) => {
-                  // --- LÓGICA DE CÁLCULO (TRANSAÇÕES + RECORRÊNCIAS) ---
-                  const now = new Date();
-                  const year = now.getFullYear();
-                  const month = now.getMonth();
+            {/* 1. SALDOS INDIVIDUAIS: Renderiza apenas se NÃO for Admin */}
+            {!state.currentUser?.isAdmin && (
+              <div className="hidden lg:flex items-center gap-6 border-r border-slate-100 pr-6">
+                {state.accounts
+                  ?.filter(acc => acc.userId === state.currentUser?.id)
+                  .map((acc) => {
+                    // Lógica de cálculo restaurada para evitar erro de variável indefinida
+                    const transBalance = state.transactions
+                      ?.filter(t => t.accountId === acc.id && new Date(t.date).getMonth() === selectedMonth && new Date(t.date).getFullYear() === selectedYear)
+                      .reduce((sum, t) => sum + (t.type === 'INCOME' ? t.amount : -t.amount), 0) || 0;
 
-                  // 1. Transações Normais
-                  const filteredTransactions = state.transactions?.filter(t => {
-                    const tDate = new Date(t.date);
-                    const matchesDate = tDate.getMonth() === selectedMonth && tDate.getFullYear() === selectedYear;
-                    const matchesUser = state.currentUser?.isAdmin 
-                      ? (selectedUserIdForViewing === 'all' || t.userId === selectedUserIdForViewing)
-                      : t.userId === state.currentUser?.id;
-                    
-                    return t.accountId === acc.id && matchesDate && matchesUser;
-                  }) || [];
+                    const recurBalance = state.recurringItems
+                      ?.filter(r => {
+                        if (r.accountId !== acc.id) return false;
+                        if (r.startDate) {
+                          const start = new Date(r.startDate);
+                          const diff = (selectedYear - start.getFullYear()) * 12 + (selectedMonth - start.getMonth());
+                          if (diff < 0 || (r.occurrences !== undefined && diff >= r.occurrences)) return false;
+                        }
+                        return true;
+                      })
+                      .reduce((sum, r) => sum + (r.type === 'INCOME' ? r.amount : -r.amount), 0) || 0;
 
-                  // 2. Itens Recorrentes (Lógica do código original)
-                  const filteredRecurring = state.recurringItems?.filter(r => {
-                    const matchesAccount = r.accountId === acc.id;
-                    const matchesUser = state.currentUser?.isAdmin 
-                      ? (selectedUserIdForViewing === 'all' || r.userId === selectedUserIdForViewing)
-                      : r.userId === state.currentUser?.id;
-                    
-                    if (!matchesAccount || !matchesUser) return false;
+                    const currentAccBalance = acc.initialBalance + transBalance + recurBalance;
 
-                    // Lógica de recorrência para o mês/ano selecionado
-                    if (r.startDate) {
-                      const start = new Date(r.startDate);
-                      const diff = (selectedYear - start.getFullYear()) * 12 + (selectedMonth - start.getMonth());
-                      if (diff < 0 || (r.occurrences !== undefined && diff >= r.occurrences)) return false;
-                    }
-                    return true;
-                  }) || [];
+                    return (
+                      <div key={acc.id} className="flex flex-col items-end">
+                        <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold leading-tight">
+                          {acc.name}
+                        </span>
+                        <span className="text-sm font-semibold text-slate-700">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(currentAccBalance)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                {state.accounts?.filter(acc => acc.userId === state.currentUser?.id).length > 0 && 
+                  <span className="text-slate-300 font-light text-xl ml-2">=</span>
+                }
+              </div>
+            )}
 
-                  // 3. Soma Final
-                  const transBalance = filteredTransactions.reduce((sum, t) => sum + (t.type === 'INCOME' ? t.amount : -t.amount), 0);
-                  const recurBalance = filteredRecurring.reduce((sum, r) => sum + (r.type === 'INCOME' ? r.amount : -r.amount), 0);
-                  
-                  const bal = acc.initialBalance + transBalance + recurBalance;
-
-                  return (
-                    <div key={acc.id} className="flex flex-col items-end">
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold leading-tight">
-                        {acc.name}
-                      </span>
-                      <span className="text-sm font-semibold text-slate-700">
-                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(bal)}
-                      </span>
-                    </div>
-                  );
-                })}
-              {state.accounts?.length > 0 && <span className="text-slate-300 font-light text-xl ml-2">=</span>}
-            </div>
-
-            {/* Saldo Total Consolidado */}
+            {/* 2. SALDO TOTAL CONSOLIDADO: Funciona para ambos */}
             <div className="flex flex-col items-end">
-              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider leading-tight">Saldo Atual</span>
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider leading-tight">
+                {state.currentUser?.isAdmin ? "Saldo Global" : "Saldo Atual"}
+              </span>
               {(() => {
+                const effectiveUserId = state.currentUser?.isAdmin ? 'all' : state.currentUser?.id;
+                
                 const totalFiltered = state.accounts
-                  ?.filter(acc => state.currentUser?.isAdmin ? (selectedUserIdForViewing === 'all' || acc.userId === selectedUserIdForViewing) : acc.userId === state.currentUser?.id)
+                  ?.filter(acc => effectiveUserId === 'all' || acc.userId === effectiveUserId)
                   .reduce((total, acc) => {
-                    // USAR AS VARIÁVEIS DO ESTADO AQUI:
-                    const year = selectedYear; 
-                    const month = selectedMonth;
-
                     const trans = state.transactions?.filter(t => {
                       const tDate = new Date(t.date);
-                      const matchesDate = tDate.getMonth() === month && tDate.getFullYear() === year;
-                      const matchesAcc = t.accountId === acc.id;
-                      const matchesUser = state.currentUser?.isAdmin 
-                        ? (selectedUserIdForViewing === 'all' || t.userId === selectedUserIdForViewing)
-                        : t.userId === state.currentUser?.id;
-                      return matchesAcc && matchesDate && matchesUser;
+                      return t.accountId === acc.id && 
+                             tDate.getMonth() === selectedMonth && 
+                             tDate.getFullYear() === selectedYear &&
+                             (effectiveUserId === 'all' || t.userId === effectiveUserId);
                     }) || [];
 
                     const recur = state.recurringItems?.filter(r => {
                       if (r.accountId !== acc.id) return false;
-                      const matchesUser = state.currentUser?.isAdmin 
-                        ? (selectedUserIdForViewing === 'all' || r.userId === selectedUserIdForViewing)
-                        : r.userId === state.currentUser?.id;
-                      
+                      const matchesUser = effectiveUserId === 'all' || r.userId === effectiveUserId;
                       if (!matchesUser) return false;
-
                       if (r.startDate) {
                         const start = new Date(r.startDate);
-                        const diff = (year - start.getFullYear()) * 12 + (month - start.getMonth());
+                        const diff = (selectedYear - start.getFullYear()) * 12 + (selectedMonth - start.getMonth());
                         if (diff < 0 || (r.occurrences !== undefined && diff >= r.occurrences)) return false;
                       }
                       return true;

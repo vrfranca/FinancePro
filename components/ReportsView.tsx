@@ -140,21 +140,6 @@ const ReportsView: React.FC<ReportsViewProps> = ({
     <div className="space-y-8 max-w-6xl mx-auto">
       {/* BARRA DE FILTROS (Igual ao Dashboard) */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-end text-left">
-        {currentUser?.isAdmin && (
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-medium text-slate-700 mb-2">Usuário</label>
-            <select 
-              value={selectedUserIdForViewing} 
-              onChange={(e) => onChangeUserFilter(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
-            >
-              <option value="all">Todos os usuários</option>
-              {users.filter(u => u.id !== currentUser.id).map(u => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
 
         <div className="flex-1 min-w-[150px]">
           <label className="block text-sm font-medium text-slate-700 mb-2">Mês</label>
