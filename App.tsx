@@ -228,16 +228,31 @@ const App: React.FC = () => {
         );
 
       case 'transactions':
-        return <TransactionsView transactions={filteredTransactions} categories={state.categories} accounts={filteredAccounts} onAdd={addTransaction} onUpdate={updateTransaction} onDelete={deleteTransaction} />;
+        return (
+          <TransactionsView 
+            transactions={filteredTransactions}
+            categories={state.categories}
+            accounts={filteredAccounts}
+            onAdd={addTransaction}
+            onUpdate={updateTransaction}
+            onDelete={deleteTransaction}
+            selectedMonth={selectedMonth}
+            setSelectedMonth={setSelectedMonth}
+            selectedYear={selectedYear}
+            setSelectedYear={setSelectedYear}
+          />
+        );
 
       case 'recurring':
         return <RecurringView items={filteredRecurring} categories={state.categories} accounts={filteredAccounts} onAdd={addRecurring} onUpdate={updateRecurring} onDelete={deleteRecurring} />;
 
       case 'settings':
-        // VISÃO DO USUÁRIO COMUM (Categorias e Contas)
         return (
           <SettingsView 
-            state={state} 
+            state={state}
+            currentUser={state.currentUser}
+            categories={filteredCategories}
+            accounts={filteredAccounts}
             onUpdate={(updates) => setState(prev => ({ ...prev, ...updates }))} 
             onlyUsers={false} 
           />

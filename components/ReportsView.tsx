@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { Calendar } from 'lucide-react';
 import { Transaction, Category, RecurringItem, User, Account } from '../types';
 
 interface ReportsViewProps {
@@ -28,10 +29,38 @@ const ReportsView: React.FC<ReportsViewProps> = ({
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
   ];
 
-  const yearsOptions = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
+  const yearsOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear();
 
-  // Filtro de dados centralizado para o período e usuário selecionados
-  // (Usado nos cards de Maiores Gastos e Eficiência)
+    const allItems = [...transactions, ...recurringItems];
+
+    const yearsFromData = allItems
+      .filter(item => {
+        return currentUser?.isAdmin
+          ? (selectedUserIdForViewing === 'all' || item.userId === selectedUserIdForViewing)
+          : item.userId === currentUser?.id;
+      })
+      .map(item => {
+        if (item.date) return new Date(item.date).getFullYear();
+        if (item.startDate) return new Date(item.startDate).getFullYear();
+        return currentYear;
+      });
+
+    const minYearFromData =
+      yearsFromData.length > 0
+        ? Math.min(...yearsFromData)
+        : currentYear;
+
+    const startYear = Math.min(currentYear, minYearFromData);
+
+    const years: number[] = [];
+    for (let y = startYear; y <= currentYear; y++) {
+      years.push(y);
+    }
+
+    return years;
+  }, [transactions, recurringItems, currentUser, selectedUserIdForViewing]);
+
   const filteredData = useMemo(() => {
     const filterByDateAndUser = (item: any) => {
       const matchesUser = currentUser?.isAdmin 
@@ -58,7 +87,6 @@ const ReportsView: React.FC<ReportsViewProps> = ({
     };
   }, [transactions, recurringItems, currentUser, selectedUserIdForViewing, selectedMonth, selectedYear]);
 
-  // Agregação de dados para o gráfico de evolução (Últimos 6 meses a partir da data selecionada)
   const monthlyData = useMemo(() => {
     const monthsMap: Record<string, { month: string, receita: number, despesa: number }> = {};
 
@@ -77,7 +105,6 @@ const ReportsView: React.FC<ReportsViewProps> = ({
       return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
     };
     
-    // Gerar chaves para os 6 meses terminando no mês/ano selecionado
     for (let i = 5; i >= 0; i--) {
       const d = new Date(selectedYear, selectedMonth);
       d.setMonth(d.getMonth() - i);
@@ -89,7 +116,6 @@ const ReportsView: React.FC<ReportsViewProps> = ({
       };
     }
 
-    // Filtrar transações por usuário antes de agregar
     const userTransactions = transactions.filter(t => 
       currentUser?.isAdmin ? (selectedUserIdForViewing === 'all' || t.userId === selectedUserIdForViewing) : t.userId === currentUser?.id
     );
@@ -138,28 +164,25 @@ const ReportsView: React.FC<ReportsViewProps> = ({
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
-      {/* BARRA DE FILTROS (Igual ao Dashboard) */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-end text-left">
 
-        <div className="flex-1 min-w-[150px]">
-          <label className="block text-sm font-medium text-slate-700 mb-2">Mês</label>
+      {/* FILTROS (MESMO PADRÃO DOS OUTROS COMPONENTES) */}
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-center">
+        <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+          <Calendar className="w-4 h-4 text-slate-400" />
           <select 
             value={selectedMonth} 
             onChange={(e) => setSelectedMonth(Number(e.target.value))}
-            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+            className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"
           >
             {monthsLabels.map((m, i) => (
               <option key={i} value={i}>{m}</option>
             ))}
           </select>
-        </div>
 
-        <div className="flex-1 min-w-[120px]">
-          <label className="block text-sm font-medium text-slate-700 mb-2">Ano</label>
           <select 
             value={selectedYear} 
             onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+            className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"
           >
             {yearsOptions.map(y => (
               <option key={y} value={y}>{y}</option>

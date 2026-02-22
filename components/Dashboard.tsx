@@ -32,9 +32,39 @@ const Dashboard: React.FC<DashboardProps> = ({
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
   ];
 
-  const yearsOptions = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
+  const yearsOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear();
 
-  // 1. Filtro de dados centralizado
+    // Combinar transações e recorrentes
+    const allItems = [...transactions, ...recurringItems];
+
+    const yearsFromData = allItems
+      .filter(item => {
+        return currentUser?.isAdmin
+          ? (selectedUserIdForViewing === 'all' || item.userId === selectedUserIdForViewing)
+          : item.userId === currentUser?.id;
+      })
+      .map(item => {
+        if (item.date) return new Date(item.date).getFullYear();
+        if (item.startDate) return new Date(item.startDate).getFullYear();
+        return currentYear;
+      });
+
+    const minYearFromData =
+      yearsFromData.length > 0
+        ? Math.min(...yearsFromData)
+        : currentYear;
+
+    const startYear = Math.min(currentYear, minYearFromData);
+
+    const years: number[] = [];
+    for (let y = startYear; y <= currentYear; y++) {
+      years.push(y);
+    }
+
+    return years;
+  }, [transactions, recurringItems, currentUser, selectedUserIdForViewing]);
+
   const filteredData = useMemo(() => {
     const filterByDateAndUser = (item: any) => {
       const matchesUser = currentUser?.isAdmin 
@@ -61,7 +91,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     };
   }, [transactions, recurringItems, currentUser, selectedUserIdForViewing, selectedMonth, selectedYear]);
 
-  // 2. Despesas por Categoria (Pizza)
   const categoryExpenseData = useMemo(() => {
     return categories
       .filter(c => c.type === 'EXPENSE')
@@ -73,7 +102,6 @@ const Dashboard: React.FC<DashboardProps> = ({
       .filter(d => d.value > 0);
   }, [categories, filteredData]);
 
-  // 3. Receitas por Conta (Pizza)
   const accountIncomeData = useMemo(() => {
     const colors = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899'];
     return accounts
@@ -86,7 +114,6 @@ const Dashboard: React.FC<DashboardProps> = ({
       .filter(d => d.value > 0);
   }, [accounts, filteredData, currentUser, selectedUserIdForViewing]);
 
-  // 4. Atividade Diária (Tipo Area - igual ao ReportsView)
   const dailyActivityData = useMemo(() => {
     const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
     return Array.from({ length: daysInMonth }).map((_, i) => {
@@ -105,18 +132,23 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
-      {/* FILTROS */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-end">
 
-        <div className="flex-1 min-w-[150px]">
-          <label className="block text-sm font-medium text-slate-700 mb-2">Mês</label>
-          <select value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+      {/* FILTROS (MESMO PADRÃO DO TransactionsView) */}
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-center">
+        <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+          <Calendar className="w-4 h-4 text-slate-400" />
+          <select 
+            value={selectedMonth} 
+            onChange={(e) => setSelectedMonth(Number(e.target.value))}
+            className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"
+          >
             {monthsLabels.map((m, i) => <option key={i} value={i}>{m}</option>)}
           </select>
-        </div>
-        <div className="flex-1 min-w-[120px]">
-          <label className="block text-sm font-medium text-slate-700 mb-2">Ano</label>
-          <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+          <select 
+            value={selectedYear} 
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+            className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"
+          >
             {yearsOptions.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
@@ -125,7 +157,9 @@ const Dashboard: React.FC<DashboardProps> = ({
       {/* GRÁFICOS SUPERIORES (PIZZA) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h4 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 text-left"><PieChart className="w-5 h-5 text-rose-500" /> Despesas por Categoria</h4>
+          <h4 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 text-left">
+            <PieChart className="w-5 h-5 text-rose-500" /> Despesas por Categoria
+          </h4>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChartIcon>
@@ -140,7 +174,9 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h4 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 text-left"><Wallet className="w-5 h-5 text-emerald-500" /> Receitas por Conta</h4>
+          <h4 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 text-left">
+            <Wallet className="w-5 h-5 text-emerald-500" /> Receitas por Conta
+          </h4>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChartIcon>
@@ -176,28 +212,10 @@ const Dashboard: React.FC<DashboardProps> = ({
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
               <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10}} />
               <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-              <Tooltip 
-                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-              />
+              <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
               <Legend verticalAlign="top" align="right" height={36} />
-              <Area 
-                name="Receita" 
-                type="monotone" 
-                dataKey="receita" 
-                stroke="#10b981" 
-                fillOpacity={1} 
-                fill="url(#colorIncomeDash)" 
-                strokeWidth={3} 
-              />
-              <Area 
-                name="Despesa" 
-                type="monotone" 
-                dataKey="despesa" 
-                stroke="#ef4444" 
-                fillOpacity={1} 
-                fill="url(#colorExpenseDash)" 
-                strokeWidth={3} 
-              />
+              <Area name="Receita" type="monotone" dataKey="receita" stroke="#10b981" fillOpacity={1} fill="url(#colorIncomeDash)" strokeWidth={3} />
+              <Area name="Despesa" type="monotone" dataKey="despesa" stroke="#ef4444" fillOpacity={1} fill="url(#colorExpenseDash)" strokeWidth={3} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
