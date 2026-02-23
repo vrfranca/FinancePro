@@ -12,11 +12,18 @@ export interface Account {
   id: string;
   userId: string; // owner of this account (each user has their own set)
   name: string;
+
   // CASH and BANK behave as normal accounts. CREDIT is treated as a
   // "limite disponível"; its `initialBalance` field represents the
   // credit limit and is counted as part of total income/balance.
   type: 'CASH' | 'BANK' | 'CREDIT';
+
   initialBalance: number;
+
+  // NEW: date when the account starts to be considered in balance/history
+  // stored as ISO string (yyyy-mm-dd)
+  startDate: string;
+
   // only relevant for CREDIT accounts; day of month when the card bill is due
   dueDay?: number;
 }

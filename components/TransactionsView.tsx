@@ -1,184 +1,321 @@
-import React, { useState, useMemo } from 'react';
-import { Plus, Trash2, Search, X, Edit2, Calendar } from 'lucide-react';
-import { Transaction, Category, Account, TransactionType } from '../types';
+import React, { useState, useMemo } from "react";
+import {
+  Plus,
+  Edit2,
+  Trash2,
+} from "lucide-react";
+import { AppState, Transaction, Category, Account, TransactionType } from "../types";
 
 interface TransactionsViewProps {
-  transactions: Transaction[];
+  state: AppState;
   categories: Category[];
   accounts: Account[];
-  onAdd: (t: Omit<Transaction, 'id' | 'userId'>) => void;
-  onUpdate: (id: string, t: Partial<Transaction>) => void;
-  onDelete: (id: string) => void;
-
-  // 🔹 Estado vindo do componente pai (igual Dashboard e Reports)
-  selectedMonth: number;
-  setSelectedMonth: (m: number) => void;
-  selectedYear: number;
-  setSelectedYear: (y: number) => void;
+  addTransaction: (transaction: Transaction) => void;
+  updateTransaction: (transaction: Transaction) => void;
+  deleteTransaction: (id: string) => void;
 }
 
-const TransactionsView: React.FC<TransactionsViewProps> = ({ 
-  transactions, categories, accounts, onAdd, onUpdate, onDelete,
-  selectedMonth, setSelectedMonth, selectedYear, setSelectedYear
-}) => {
+export default function TransactionsView({
+  state,
+  categories,
+  accounts,
+  addTransaction,
+  updateTransaction,
+  deleteTransaction,
+}: TransactionsViewProps) {
 
-  const [isModalOpen, setModalOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [search, setSearch] = useState("");
 
-  const monthsLabels = [
-    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-  ];
+  const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
-  const yearsOptions = useMemo(() => {
-    const currentYear = new Date().getFullYear();
+  const [transactionForm, setTransactionForm] = useState({
+    description: "",
+    amount: 0,
+    date: new Date().toISOString().split("T")[0],
+    categoryId: "",
+    accountId: "",
+    type: "expense" as TransactionType,
+    isRecurring: false,
+  });
 
-    const yearsFromData = transactions.map(t =>
-      new Date(t.date).getFullYear()
-    );
-
-    const minYearFromData =
-      yearsFromData.length > 0
-        ? Math.min(...yearsFromData)
-        : currentYear;
-
-    const startYear = Math.min(currentYear, minYearFromData);
-
-    const years: number[] = [];
-    for (let y = startYear; y <= currentYear; y++) {
-      years.push(y);
-    }
-
-    return years;
-  }, [transactions]);
-
-  // 🔹 Filtro combinado (Busca + Mês + Ano)
-  const filtered = useMemo(() => {
-    return transactions.filter(t => {
-      const transactionDate = new Date(t.date);
-
-      const matchesSearch = t.description
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase());
-
-      const matchesMonth =
-        transactionDate.getMonth() === selectedMonth;
-
-      const matchesYear =
-        transactionDate.getFullYear() === selectedYear;
-      
-      return matchesSearch && matchesMonth && matchesYear;
+  const filteredTransactions = useMemo(() => {
+    return state.transactions.filter((t) => {
+      const date = new Date(t.date);
+      return (
+        date.getMonth() + 1 === selectedMonth &&
+        date.getFullYear() === selectedYear &&
+        t.description.toLowerCase().includes(search.toLowerCase())
+      );
     });
-  }, [transactions, searchTerm, selectedMonth, selectedYear]);
+  }, [state.transactions, selectedMonth, selectedYear, search]);
 
-  const initialFormState = {
-    description: '',
-    amount: '',
-    date: new Date().toISOString().split('T')[0],
-    categoryId: categories[0]?.id || '',
-    accountId: accounts[0]?.id || '',
-    type: 'EXPENSE' as TransactionType,
-    isRecurring: false
+  const openNewModal = () => {
+    setEditingTransaction(null);
+    setTransactionForm({
+      type: "expense",
+      description: "",
+      amount: 0,
+      date: new Date().toISOString().split("T")[0],
+      categoryId: "",
+      accountId: "",
+      notes: "",
+    });
+    setIsTransactionModalOpen(true);
   };
 
-  const [formData, setFormData] = useState(initialFormState);
+  const openEditModal = (transaction: Transaction) => {
+    setEditingTransaction(transaction);
 
-  const handleEdit = (transaction: Transaction) => {
-    setEditingId(transaction.id);
-    setFormData({
+    setTransactionForm({
       description: transaction.description,
-      amount: transaction.amount.toString(),
+      amount: transaction.amount,
       date: transaction.date,
       categoryId: transaction.categoryId,
       accountId: transaction.accountId,
       type: transaction.type,
-      isRecurring: transaction.isRecurring
+      isRecurring: transaction.isRecurring,
     });
-    setModalOpen(true);
+
+    setIsTransactionModalOpen(true);
   };
 
-  const handleAddNew = () => {
-    setEditingId(null);
-    setFormData(initialFormState);
-    setModalOpen(true);
-  };
+  const handleSaveTransaction = () => {
+    if (!transactionForm.description || !transactionForm.amount) return;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const payload = {
-      ...formData,
-      amount: parseFloat(formData.amount)
+    const transaction: Transaction = {
+      id: editingTransaction?.id || crypto.randomUUID(),
+      userId: editingTransaction?.userId || state.currentUser!.id,
+      isRecurring: editingTransaction?.isRecurring ?? false,
+      ...transactionForm,
     };
 
-    if (editingId) {
-      onUpdate(editingId, payload);
+    if (editingTransaction) {
+      updateTransaction(transaction);
     } else {
-      onAdd(payload);
+      addTransaction(transaction);
     }
 
-    setModalOpen(false);
-    setEditingId(null);
+    setIsTransactionModalOpen(false);
+    setEditingTransaction(null);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
 
-      {/* 🔹 FILTROS (Mesmo padrão das outras páginas) */}
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-center">
-        <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
-          <Calendar className="w-4 h-4 text-slate-400" />
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-semibold">Movimentações</h1>
 
-          <select 
-            value={selectedMonth} 
-            onChange={(e) => setSelectedMonth(Number(e.target.value))}
-            className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"
-          >
-            {monthsLabels.map((m, i) => (
-              <option key={i} value={i}>{m}</option>
-            ))}
-          </select>
-
-          <select 
-            value={selectedYear} 
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"
-          >
-            {yearsOptions.map(y => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Busca */}
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-          <input 
-            type="text" 
-            placeholder="Buscar lançamentos..." 
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm transition-all"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
-        <button 
-          onClick={handleAddNew}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl flex items-center gap-2 font-bold transition-all shadow-lg shadow-indigo-600/20 text-sm whitespace-nowrap"
+        <button
+          onClick={openNewModal}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-2xl transition"
         >
-          <Plus className="w-4 h-4" /> Novo
+          <Plus size={18} />
+          Nova Movimentação
         </button>
       </div>
 
-      {/* 🔹 Tabela de Transações */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        {/* Mantém exatamente sua implementação original */}
+      {/* Filtros */}
+      <div className="flex gap-4 flex-wrap">
+        <input
+          type="number"
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(Number(e.target.value))}
+          className="border rounded-xl px-3 py-2 w-24"
+          placeholder="Mês"
+        />
+        <input
+          type="number"
+          value={selectedYear}
+          onChange={(e) => setSelectedYear(Number(e.target.value))}
+          className="border rounded-xl px-3 py-2 w-28"
+          placeholder="Ano"
+        />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="border rounded-xl px-3 py-2 flex-1"
+          placeholder="Buscar descrição..."
+        />
       </div>
 
-      {/* 🔹 Modal permanece igual à sua implementação */}
+      {/* Lista */}
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow overflow-hidden">
+        {filteredTransactions.map((t) => (
+          <div
+            key={t.id}
+            className="flex justify-between items-center px-4 py-3 border-b last:border-b-0"
+          >
+            <div>
+              <div className="font-medium">{t.description}</div>
+              <div className="text-sm text-gray-500">
+                {new Date(t.date).toLocaleDateString()}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <span
+                className={`font-semibold ${
+                  t.type === "income"
+                    ? "text-green-600"
+                    : "text-red-600"
+                }`}
+              >
+                R$ {t.amount.toFixed(2)}
+              </span>
+
+              <button onClick={() => openEditModal(t)}>
+                <Edit2 size={16} />
+              </button>
+
+              <button onClick={() => deleteTransaction(t.id)}>
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* MODAL */}
+      {isTransactionModalOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-md p-6">
+
+            <h2 className="text-xl font-semibold mb-4">
+              {editingTransaction ? "Editar Movimentação" : "Nova Movimentação"}
+            </h2>
+
+            <div className="space-y-4">
+
+              <select
+                value={transactionForm.type}
+                onChange={(e) =>
+                  setTransactionForm({
+                    ...transactionForm,
+                    type: e.target.value as TransactionType,
+                  })
+                }
+                className="w-full border rounded-xl px-3 py-2"
+              >
+                <option value="income">Receita</option>
+                <option value="expense">Despesa</option>
+              </select>
+
+              <input
+                type="text"
+                placeholder="Descrição"
+                value={transactionForm.description}
+                onChange={(e) =>
+                  setTransactionForm({
+                    ...transactionForm,
+                    description: e.target.value,
+                  })
+                }
+                className="w-full border rounded-xl px-3 py-2"
+              />
+
+              <input
+                type="number"
+                placeholder="Valor"
+                step="0.01"
+                value={transactionForm.amount}
+                onChange={(e) =>
+                  setTransactionForm({
+                    ...transactionForm,
+                    amount: Number(e.target.value),
+                  })
+                }
+                className="w-full border rounded-xl px-3 py-2"
+              />
+
+              <input
+                type="date"
+                value={transactionForm.date}
+                onChange={(e) =>
+                  setTransactionForm({
+                    ...transactionForm,
+                    date: e.target.value,
+                  })
+                }
+                className="w-full border rounded-xl px-3 py-2"
+              />
+
+              <select
+                value={transactionForm.categoryId}
+                onChange={(e) =>
+                  setTransactionForm({
+                    ...transactionForm,
+                    categoryId: e.target.value,
+                  })
+                }
+                className="w-full border rounded-xl px-3 py-2"
+              >
+                <option value="">Categoria</option>
+                {categories
+                  .filter((c) => c.type === transactionForm.type)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+              </select>
+
+              <select
+                value={transactionForm.accountId}
+                onChange={(e) =>
+                  setTransactionForm({
+                    ...transactionForm,
+                    accountId: e.target.value,
+                  })
+                }
+                className="w-full border rounded-xl px-3 py-2"
+              >
+                <option value="">Conta</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+
+              <textarea
+                placeholder="Observação"
+                value={transactionForm.notes}
+                onChange={(e) =>
+                  setTransactionForm({
+                    ...transactionForm,
+                    notes: e.target.value,
+                  })
+                }
+                className="w-full border rounded-xl px-3 py-2"
+                rows={3}
+              />
+
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setIsTransactionModalOpen(false)}
+                className="px-4 py-2 rounded-xl border hover:bg-gray-100 dark:hover:bg-zinc-800 transition"
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={handleSaveTransaction}
+                className="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition"
+              >
+                Salvar
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
-};
-
-export default TransactionsView;
+}
