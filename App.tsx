@@ -31,7 +31,7 @@ const App: React.FC = () => {
       try {
         const parsed = JSON.parse(savedRaw) as AppState;
         // ensure isAdmin flag exists and migrate admin email to match constants
-        const adminEmail = INITIAL_USERS.find(x => x.id === '1')?.email ?? 'vrfranca@live.cm';
+        const adminEmail = INITIAL_USERS.find(x => x.id === '1')?.email ?? 'vrfranca@live.com';
         const migratedUsers = (parsed.users || []).map(u => ({ ...u, isAdmin: (u as any).isAdmin ?? (u.id === '1'), email: u.id === '1' ? adminEmail : u.email }));
         // Never restore currentUser from storage - always start logged out
         return { 
@@ -190,7 +190,19 @@ const App: React.FC = () => {
     setActiveTab('dashboard'); // Reset to dashboard on logout
     setSelectedUserIdForViewing('all'); // Reset user filter
   };
-  const setUserPassword = (userId: string, passwordHash: string) => setState(prev => ({ ...prev, users: prev.users.map(u => u.id === userId ? { ...u, passwordHash } : u) }));
+  const setUserPassword = (userId: string, passwordHash: string) =>
+    setState(prev => ({
+      ...prev,
+      users: prev.users.map(u =>
+        u.id === userId
+          ? {
+              ...u,
+              passwordHash,
+              mustChangePassword: false
+            }
+          : u
+      )
+    }));
   const addUser = (u: { name: string; username?: string; email: string; passwordHash?: string }) => {
     const newUser: User = { id: Math.random().toString(36).substr(2, 9), name: u.name, username: u.username, email: u.email, active: true, isAdmin: false, ...(u.passwordHash ? { passwordHash: u.passwordHash } : {}) };
     setState(prev => ({ ...prev, users: [...prev.users, newUser] }));

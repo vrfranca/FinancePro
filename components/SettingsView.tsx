@@ -3,7 +3,8 @@ import {
   Plus, Trash2, Tag, CreditCard, Users as UsersIcon, 
   Edit2, X, KeyRound, UserMinus, Lock, Unlock 
 } from 'lucide-react';
-import { AppState, Category, Account, User, TransactionType } from '../types';
+import { AppState, Category, Account, User, TransactionType } from '../types'
+import { hashPassword } from '../utils/auth';;
 
 interface SettingsViewProps {
   state: AppState;
@@ -412,15 +413,28 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers 
                       </button>
 
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           const newPass = prompt('Digite a nova senha:');
                           if (!newPass) return;
 
+                          if (newPass.length < 4) {
+                            alert('Senha deve ter ao menos 4 caracteres.');
+                            return;
+                          }
+
                           if (!window.confirm('Confirma a alteração da senha?')) return;
+
+                          const passwordHash = await hashPassword(newPass);
 
                           onUpdate({
                             users: state.users.map(u =>
-                              u.id === user.id ? { ...u, password: newPass } : u
+                              u.id === user.id
+                                ? {
+                                    ...u,
+                                    passwordHash,
+                                    mustChangePassword: false
+                                  }
+                                : u
                             )
                           });
 
@@ -433,6 +447,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers 
 
                       <button
                         onClick={() => {
+                          if (user.isAdmin) {
+                            alert('O usuário Administrador não pode ser excluído.');
+                            return;
+                          }
+
                           if (!window.confirm('Tem certeza que deseja excluir este usuário?')) return;
 
                           onUpdate({
@@ -441,7 +460,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers 
 
                           alert('Usuário excluído com sucesso.');
                         }}
-                        className="text-slate-400 hover:text-rose-600"
+                        className={`text-slate-400 ${
+                          user.isAdmin 
+                            ? 'opacity-40 cursor-not-allowed' 
+                            : 'hover:text-rose-600'
+                        }`}
+                        disabled={user.isAdmin}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -647,17 +671,31 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers 
             </div>
 
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
+                setAddUserError('');
 
-                if (newPassword !== newPassword2) {
-                  setAddUserError('As senhas não coincidem.');
+                if (!newName || !newEmail) {
+                  setAddUserError('Preencha nome e email.');
                   return;
                 }
 
-                if (!newName || !newEmail || !newPassword) {
-                  setAddUserError('Preencha todos os campos.');
-                  return;
+                if (newPassword || newPassword2) {
+                  if (newPassword !== newPassword2) {
+                    setAddUserError('As senhas não coincidem.');
+                    return;
+                  }
+
+                  if (newPassword.length < 4) {
+                    setAddUserError('Senha deve ter ao menos 4 caracteres.');
+                    return;
+                  }
+                }
+
+                let passwordHash: string | undefined = undefined;
+
+                if (newPassword) {
+                  passwordHash = await hashPassword(newPassword);
                 }
 
                 if (editingUser) {
@@ -672,7 +710,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers 
                             name: newName,
                             username: newUsername,
                             email: newEmail,
-                            password: newPassword
+                            ...(passwordHash
+                              ? {
+                                  passwordHash,
+                                  mustChangePassword: true
+                                }
+                              : {})
                           }
                         : u
                     )
@@ -687,9 +730,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers 
                     name: newName,
                     username: newUsername,
                     email: newEmail,
-                    password: newPassword,
                     isAdmin: false,
-                    isBlocked: false
+                    isBlocked: false,
+                    passwordHash,
+                    mustChangePassword: !!passwordHash
                   };
 
                   onUpdate({
