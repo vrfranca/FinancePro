@@ -1,9 +1,5 @@
 import React, { useState, useMemo } from "react";
-import {
-  Plus,
-  Edit2,
-  Trash2,
-} from "lucide-react";
+import { Calendar, Plus, Edit2, Trash2 } from "lucide-react";
 import { AppState, Transaction, Category, Account, TransactionType } from "../types";
 
 interface TransactionsViewProps {
@@ -40,6 +36,33 @@ export default function TransactionsView({
     type: "expense" as TransactionType,
     isRecurring: false,
   });
+
+  const monthsLabels = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+];
+
+const yearsOptions = useMemo(() => {
+  const currentYear = new Date().getFullYear();
+
+  const yearsFromTransactions = state.transactions.map(t =>
+    new Date(t.date).getFullYear()
+  );
+
+  const minYear =
+    yearsFromTransactions.length > 0
+      ? Math.min(...yearsFromTransactions)
+      : currentYear;
+
+  const startYear = Math.min(currentYear, minYear);
+
+  const years: number[] = [];
+  for (let y = startYear; y <= currentYear; y++) {
+    years.push(y);
+  }
+
+  return years;
+}, [state.transactions]);
 
   const filteredTransactions = useMemo(() => {
     return state.transactions.filter((t) => {
@@ -118,33 +141,54 @@ export default function TransactionsView({
         </button>
       </div>
 
-      {/* Filtros */}
-      <div className="flex gap-4 flex-wrap">
-        <input
-          type="number"
-          value={selectedMonth}
-          onChange={(e) => setSelectedMonth(Number(e.target.value))}
-          className="border rounded-xl px-3 py-2 w-24"
-          placeholder="Mês"
-        />
-        <input
-          type="number"
-          value={selectedYear}
-          onChange={(e) => setSelectedYear(Number(e.target.value))}
-          className="border rounded-xl px-3 py-2 w-28"
-          placeholder="Ano"
-        />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="border rounded-xl px-3 py-2 flex-1"
-          placeholder="Buscar descrição..."
-        />
+      {/* FILTROS — PADRÃO EXATO DO DASHBOARD */}
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-center">
+
+        {/* Mês + Ano */}
+        <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+          <Calendar className="w-4 h-4 text-slate-400" />
+
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(Number(e.target.value))}
+            className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"
+          >
+            {monthsLabels.map((m, i) => (
+              <option key={i + 1} value={i + 1}>
+                {m}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+            className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"
+          >
+            {yearsOptions.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Busca */}
+        <div className="flex-1">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar descrição..."
+            className="w-full bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
       </div>
 
+
       {/* Lista */}
-      <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow overflow-hidden">
+      <div className="bg-white bg-slate-50 rounded-2xl shadow overflow-hidden">
         {filteredTransactions.map((t) => (
           <div
             key={t.id}
@@ -183,7 +227,7 @@ export default function TransactionsView({
       {/* MODAL */}
       {isTransactionModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-md p-6">
+          <div className="bg-white bg-slate-50 rounded-2xl shadow-xl w-full max-w-md p-6">
 
             <h2 className="text-xl font-semibold mb-4">
               {editingTransaction ? "Editar Movimentação" : "Nova Movimentação"}
@@ -300,7 +344,7 @@ export default function TransactionsView({
             <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={() => setIsTransactionModalOpen(false)}
-                className="px-4 py-2 rounded-xl border hover:bg-gray-100 dark:hover:bg-zinc-800 transition"
+                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition"
               >
                 Cancelar
               </button>

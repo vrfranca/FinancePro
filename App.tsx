@@ -230,16 +230,12 @@ const App: React.FC = () => {
       case 'transactions':
         return (
           <TransactionsView 
-            transactions={filteredTransactions}
+            state={state}
             categories={state.categories}
-            accounts={filteredAccounts}
-            onAdd={addTransaction}
-            onUpdate={updateTransaction}
-            onDelete={deleteTransaction}
-            selectedMonth={selectedMonth}
-            setSelectedMonth={setSelectedMonth}
-            selectedYear={selectedYear}
-            setSelectedYear={setSelectedYear}
+            accounts={state.accounts}
+            addTransaction={addTransaction}
+            updateTransaction={updateTransaction}
+            deleteTransaction={deleteTransaction}
           />
         );
 

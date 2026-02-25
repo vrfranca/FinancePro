@@ -512,7 +512,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers 
                 <button
                   type="button"
                   onClick={() => setModalType(null)}
-                  className="px-4 py-2 text-sm font-semibold text-slate-500"
+                  className="px-4 py-2 text-sm font-semibold rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 hover:border-slate-300 transition-all duration-200"
                 >
                   Cancelar
                 </button>
@@ -617,7 +617,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers 
                 <button
                   type="button"
                   onClick={() => setModalType(null)}
-                  className="px-4 py-2 text-sm font-semibold text-slate-500"
+                  className="px-4 py-2 text-sm font-semibold rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 hover:border-slate-300 transition-all duration-200"
                 >
                   Cancelar
                 </button>
@@ -774,7 +774,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers 
                 <button
                   type="button"
                   onClick={() => setShowAddUserModal(false)}
-                  className="px-4 py-2 text-sm font-semibold text-slate-500"
+                  className="px-4 py-2 text-sm font-semibold rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 hover:border-slate-300 transition-all duration-200"
                 >
                   Cancelar
                 </button>
