@@ -1,13 +1,13 @@
 import React, { useState, useMemo } from "react";
-import { Calendar, Plus, Edit2, Trash2 } from "lucide-react";
+import { Calendar, Plus, Edit2, Trash2, X } from "lucide-react";
 import { AppState, Transaction, Category, Account, TransactionType } from "../types";
 
 interface TransactionsViewProps {
   state: AppState;
   categories: Category[];
   accounts: Account[];
-  addTransaction: (transaction: Transaction) => void;
-  updateTransaction: (transaction: Transaction) => void;
+  addTransaction: (t: Omit<Transaction, "id" | "userId">) => void;
+  updateTransaction: (id: string, t: Partial<Transaction>) => void;
   deleteTransaction: (id: string) => void;
 }
 
@@ -20,6 +20,7 @@ export default function TransactionsView({
   deleteTransaction,
 }: TransactionsViewProps) {
 
+  // ✅ Mês padrão 1–12
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [search, setSearch] = useState("");
@@ -27,65 +28,71 @@ export default function TransactionsView({
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
-  const [transactionForm, setTransactionForm] = useState({
+  const initialFormState = {
     description: "",
     amount: 0,
     date: new Date().toISOString().split("T")[0],
     categoryId: "",
     accountId: "",
-    type: "expense" as TransactionType,
+    type: "EXPENSE" as TransactionType,
     isRecurring: false,
-  });
+    notes: "",
+  };
+
+  const [transactionForm, setTransactionForm] = useState(initialFormState);
 
   const monthsLabels = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-];
+    "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+    "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"
+  ];
 
-const yearsOptions = useMemo(() => {
-  const currentYear = new Date().getFullYear();
+  // ✅ SEM new Date() (evita bug de timezone)
+  const yearsOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear();
 
-  const yearsFromTransactions = state.transactions.map(t =>
-    new Date(t.date).getFullYear()
-  );
+    const yearsFromTransactions = state.transactions.map(t => {
+      const [year] = t.date.split("-");
+      return Number(year);
+    });
 
-  const minYear =
-    yearsFromTransactions.length > 0
-      ? Math.min(...yearsFromTransactions)
-      : currentYear;
+    const minYear =
+      yearsFromTransactions.length > 0
+        ? Math.min(...yearsFromTransactions)
+        : currentYear;
 
-  const startYear = Math.min(currentYear, minYear);
+    const startYear = Math.min(currentYear, minYear);
 
-  const years: number[] = [];
-  for (let y = startYear; y <= currentYear; y++) {
-    years.push(y);
-  }
+    const years: number[] = [];
+    for (let y = startYear; y <= currentYear; y++) {
+      years.push(y);
+    }
 
-  return years;
-}, [state.transactions]);
+    return years;
+  }, [state.transactions]);
 
   const filteredTransactions = useMemo(() => {
+    if (!state.currentUser) return [];
+
     return state.transactions.filter((t) => {
-      const date = new Date(t.date);
+      const [year, month] = t.date.split("-").map(Number);
+
       return (
-        date.getMonth() + 1 === selectedMonth &&
-        date.getFullYear() === selectedYear &&
+        t.userId === state.currentUser.id &&
+        month === selectedMonth &&
+        year === selectedYear &&
         t.description.toLowerCase().includes(search.toLowerCase())
       );
     });
-  }, [state.transactions, selectedMonth, selectedYear, search]);
+  }, [state.transactions, state.currentUser, selectedMonth, selectedYear, search]);
+
+  const formatDateBR = (dateStr: string) => {
+    const [year, month, day] = dateStr.split("-");
+    return `${day}/${month}/${year}`;
+  };
 
   const openNewModal = () => {
     setEditingTransaction(null);
-    setTransactionForm({
-      type: "expense",
-      description: "",
-      amount: 0,
-      date: new Date().toISOString().split("T")[0],
-      categoryId: "",
-      accountId: "",
-      notes: "",
-    });
+    setTransactionForm(initialFormState);
     setIsTransactionModalOpen(true);
   };
 
@@ -100,6 +107,7 @@ const yearsOptions = useMemo(() => {
       accountId: transaction.accountId,
       type: transaction.type,
       isRecurring: transaction.isRecurring,
+      notes: transaction.notes || "",
     });
 
     setIsTransactionModalOpen(true);
@@ -107,18 +115,17 @@ const yearsOptions = useMemo(() => {
 
   const handleSaveTransaction = () => {
     if (!transactionForm.description || !transactionForm.amount) return;
+    if (!transactionForm.categoryId || !transactionForm.accountId) return;
 
-    const transaction: Transaction = {
-      id: editingTransaction?.id || crypto.randomUUID(),
-      userId: editingTransaction?.userId || state.currentUser!.id,
-      isRecurring: editingTransaction?.isRecurring ?? false,
+    const payload = {
       ...transactionForm,
+      amount: Number(transactionForm.amount),
     };
 
     if (editingTransaction) {
-      updateTransaction(transaction);
+      updateTransaction(editingTransaction.id, payload);
     } else {
-      addTransaction(transaction);
+      addTransaction(payload);
     }
 
     setIsTransactionModalOpen(false);
@@ -127,24 +134,19 @@ const yearsOptions = useMemo(() => {
 
   return (
     <div className="p-6 space-y-6">
-
-      {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-semibold">Movimentações</h1>
 
         <button
           onClick={openNewModal}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-2xl transition"
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-xl font-semibold transition-all shadow-lg shadow-indigo-600/20 text-sm"
         >
           <Plus size={18} />
           Nova Movimentação
         </button>
       </div>
 
-      {/* FILTROS — PADRÃO EXATO DO DASHBOARD */}
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-center">
-
-        {/* Mês + Ano */}
         <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
           <Calendar className="w-4 h-4 text-slate-400" />
 
@@ -154,9 +156,7 @@ const yearsOptions = useMemo(() => {
             className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"
           >
             {monthsLabels.map((m, i) => (
-              <option key={i + 1} value={i + 1}>
-                {m}
-              </option>
+              <option key={i + 1} value={i + 1}>{m}</option>
             ))}
           </select>
 
@@ -166,29 +166,23 @@ const yearsOptions = useMemo(() => {
             className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"
           >
             {yearsOptions.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
+              <option key={y} value={y}>{y}</option>
             ))}
           </select>
         </div>
 
-        {/* Busca */}
         <div className="flex-1">
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar descrição..."
-            className="w-full bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
           />
         </div>
-
       </div>
 
-
-      {/* Lista */}
-      <div className="bg-white bg-slate-50 rounded-2xl shadow overflow-hidden">
+      <div className="bg-white rounded-2xl shadow overflow-hidden">
         {filteredTransactions.map((t) => (
           <div
             key={t.id}
@@ -197,18 +191,12 @@ const yearsOptions = useMemo(() => {
             <div>
               <div className="font-medium">{t.description}</div>
               <div className="text-sm text-gray-500">
-                {new Date(t.date).toLocaleDateString()}
+                {formatDateBR(t.date)}
               </div>
             </div>
 
             <div className="flex items-center gap-4">
-              <span
-                className={`font-semibold ${
-                  t.type === "income"
-                    ? "text-green-600"
-                    : "text-red-600"
-                }`}
-              >
+              <span className={`font-semibold ${t.type === "INCOME" ? "text-emerald-600" : "text-rose-600"}`}>
                 R$ {t.amount.toFixed(2)}
               </span>
 
@@ -224,139 +212,129 @@ const yearsOptions = useMemo(() => {
         ))}
       </div>
 
-      {/* MODAL */}
       {isTransactionModalOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white bg-slate-50 rounded-2xl shadow-xl w-full max-w-md p-6">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="relative bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden">
 
-            <h2 className="text-xl font-semibold mb-4">
-              {editingTransaction ? "Editar Movimentação" : "Nova Movimentação"}
-            </h2>
+            <button
+              onClick={() => {
+                setIsTransactionModalOpen(false);
+                setEditingTransaction(null);
+              }}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+            >
+              <X size={20} />
+            </button>
 
-            <div className="space-y-4">
+            <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50">
+              <h2 className="text-xl font-bold text-slate-800">
+                {editingTransaction ? "Editar Movimentação" : "Nova Movimentação"}
+              </h2>
+            </div>
 
-              <select
-                value={transactionForm.type}
-                onChange={(e) =>
-                  setTransactionForm({
-                    ...transactionForm,
-                    type: e.target.value as TransactionType,
-                  })
-                }
-                className="w-full border rounded-xl px-3 py-2"
-              >
-                <option value="income">Receita</option>
-                <option value="expense">Despesa</option>
-              </select>
+            <div className="p-8 space-y-6">
+
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setTransactionForm({...transactionForm, type: "EXPENSE"})}
+                  className={`py-3 rounded-2xl border-2 font-bold text-sm ${
+                    transactionForm.type === "EXPENSE"
+                      ? "border-rose-600 bg-rose-600 text-white"
+                      : "border-slate-100 bg-white text-slate-400"
+                  }`}
+                >
+                  DESPESA
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTransactionForm({...transactionForm, type: "INCOME"})}
+                  className={`py-3 rounded-2xl border-2 font-bold text-sm ${
+                    transactionForm.type === "INCOME"
+                      ? "border-emerald-600 bg-emerald-600 text-white"
+                      : "border-slate-100 bg-white text-slate-400"
+                  }`}
+                >
+                  RECEITA
+                </button>
+              </div>
 
               <input
                 type="text"
                 placeholder="Descrição"
                 value={transactionForm.description}
                 onChange={(e) =>
-                  setTransactionForm({
-                    ...transactionForm,
-                    description: e.target.value,
-                  })
+                  setTransactionForm({...transactionForm, description: e.target.value})
                 }
-                className="w-full border rounded-xl px-3 py-2"
+                className="w-full px-4 py-3 border border-slate-300 rounded-2xl"
               />
 
               <input
                 type="number"
-                placeholder="Valor"
                 step="0.01"
                 value={transactionForm.amount}
                 onChange={(e) =>
-                  setTransactionForm({
-                    ...transactionForm,
-                    amount: Number(e.target.value),
-                  })
+                  setTransactionForm({...transactionForm, amount: Number(e.target.value)})
                 }
-                className="w-full border rounded-xl px-3 py-2"
+                className="w-full px-4 py-3 border border-slate-300 rounded-2xl"
               />
 
               <input
                 type="date"
                 value={transactionForm.date}
                 onChange={(e) =>
-                  setTransactionForm({
-                    ...transactionForm,
-                    date: e.target.value,
-                  })
+                  setTransactionForm({...transactionForm, date: e.target.value})
                 }
-                className="w-full border rounded-xl px-3 py-2"
+                className="w-full px-4 py-3 border border-slate-300 rounded-2xl"
               />
 
               <select
                 value={transactionForm.categoryId}
                 onChange={(e) =>
-                  setTransactionForm({
-                    ...transactionForm,
-                    categoryId: e.target.value,
-                  })
+                  setTransactionForm({...transactionForm, categoryId: e.target.value})
                 }
-                className="w-full border rounded-xl px-3 py-2"
+                className="w-full px-4 py-3 border border-slate-300 rounded-2xl"
               >
-                <option value="">Categoria</option>
+                <option value="">Selecione</option>
                 {categories
                   .filter((c) => c.type === transactionForm.type)
                   .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
+                    <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
               </select>
 
               <select
                 value={transactionForm.accountId}
                 onChange={(e) =>
-                  setTransactionForm({
-                    ...transactionForm,
-                    accountId: e.target.value,
-                  })
+                  setTransactionForm({...transactionForm, accountId: e.target.value})
                 }
-                className="w-full border rounded-xl px-3 py-2"
+                className="w-full px-4 py-3 border border-slate-300 rounded-2xl"
               >
-                <option value="">Conta</option>
+                <option value="">Selecione</option>
                 {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
+                  <option key={a.id} value={a.id}>{a.name}</option>
                 ))}
               </select>
 
               <textarea
-                placeholder="Observação"
+                rows={3}
                 value={transactionForm.notes}
                 onChange={(e) =>
-                  setTransactionForm({
-                    ...transactionForm,
-                    notes: e.target.value,
-                  })
+                  setTransactionForm({...transactionForm, notes: e.target.value})
                 }
-                className="w-full border rounded-xl px-3 py-2"
-                rows={3}
+                className="w-full px-4 py-3 border border-slate-300 rounded-2xl"
+                placeholder="Observações (opcional)"
               />
-
-            </div>
-
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setIsTransactionModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition"
-              >
-                Cancelar
-              </button>
 
               <button
                 onClick={handleSaveTransaction}
-                className="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl"
               >
-                Salvar
+                {editingTransaction ? "Confirmar Edição" : "Salvar Movimentação"}
               </button>
-            </div>
 
+            </div>
           </div>
         </div>
       )}

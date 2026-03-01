@@ -38,6 +38,7 @@ export interface Transaction {
   accountId: string;
   type: TransactionType;
   isRecurring: boolean;
+  notes?: string; // adiciona como opcional
 }
 
 export interface RecurringItem {

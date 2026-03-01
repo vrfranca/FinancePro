@@ -15,7 +15,7 @@ interface DashboardProps {
   users: User[];
   selectedUserIdForViewing: string | 'all';
   onChangeUserFilter: (userId: string | 'all') => void;
-  selectedMonth: number;
+  selectedMonth: number; // 1–12
   setSelectedMonth: (m: number) => void;
   selectedYear: number;
   setSelectedYear: (y: number) => void;
@@ -32,10 +32,12 @@ const Dashboard: React.FC<DashboardProps> = ({
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
   ];
 
+  /* ================================
+     YEARS OPTIONS (SEM new Date)
+  ==================================*/
   const yearsOptions = useMemo(() => {
     const currentYear = new Date().getFullYear();
 
-    // Combinar transações e recorrentes
     const allItems = [...transactions, ...recurringItems];
 
     const yearsFromData = allItems
@@ -45,8 +47,14 @@ const Dashboard: React.FC<DashboardProps> = ({
           : item.userId === currentUser?.id;
       })
       .map(item => {
-        if (item.date) return new Date(item.date).getFullYear();
-        if (item.startDate) return new Date(item.startDate).getFullYear();
+        if ('date' in item && item.date) {
+          const [year] = item.date.split("-");
+          return Number(year);
+        }
+        if ('startDate' in item && item.startDate) {
+          const [year] = item.startDate.split("-");
+          return Number(year);
+        }
         return currentYear;
       });
 
@@ -65,91 +73,172 @@ const Dashboard: React.FC<DashboardProps> = ({
     return years;
   }, [transactions, recurringItems, currentUser, selectedUserIdForViewing]);
 
+  /* ================================
+     FILTER DATA (SEM new Date)
+  ==================================*/
   const filteredData = useMemo(() => {
+
     const filterByDateAndUser = (item: any) => {
+
       const matchesUser = currentUser?.isAdmin 
         ? (selectedUserIdForViewing === 'all' || item.userId === selectedUserIdForViewing)
         : item.userId === currentUser?.id;
 
+      if (!matchesUser) return false;
+
+      // TRANSAÇÕES NORMAIS
       if (item.date) {
-        const d = new Date(item.date);
-        return matchesUser && d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
+        const [year, month] = item.date.split("-").map(Number);
+        return year === selectedYear && month === selectedMonth;
       }
-      
+
+      // RECORRENTES
       if (item.startDate) {
-        const start = new Date(item.startDate);
-        const diff = (selectedYear - start.getFullYear()) * 12 + (selectedMonth - start.getMonth());
-        const isActive = diff >= 0 && (item.occurrences === undefined || diff < item.occurrences);
-        return matchesUser && isActive;
+        const [startYear, startMonth] = item.startDate.split("-").map(Number);
+
+        const diff =
+          (selectedYear - startYear) * 12 +
+          (selectedMonth - startMonth);
+
+        const isActive =
+          diff >= 0 &&
+          (item.occurrences === undefined || diff < item.occurrences);
+
+        return isActive;
       }
-      return matchesUser;
+
+      return false;
     };
 
     return {
       transactions: transactions.filter(filterByDateAndUser),
       recurringItems: recurringItems.filter(filterByDateAndUser)
     };
+
   }, [transactions, recurringItems, currentUser, selectedUserIdForViewing, selectedMonth, selectedYear]);
 
+  /* ================================
+     DESPESAS POR CATEGORIA
+  ==================================*/
   const categoryExpenseData = useMemo(() => {
     return categories
       .filter(c => c.type === 'EXPENSE')
       .map(c => {
-        const val = filteredData.transactions.filter(t => t.categoryId === c.id && t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0) +
-                    filteredData.recurringItems.filter(r => r.categoryId === c.id && r.type === 'EXPENSE').reduce((s, r) => s + r.amount, 0);
+        const val =
+          filteredData.transactions
+            .filter(t => t.categoryId === c.id && t.type === 'EXPENSE')
+            .reduce((s, t) => s + t.amount, 0)
+          +
+          filteredData.recurringItems
+            .filter(r => r.categoryId === c.id && r.type === 'EXPENSE')
+            .reduce((s, r) => s + r.amount, 0);
+
         return { name: c.name, value: val, color: c.color };
       })
       .filter(d => d.value > 0);
   }, [categories, filteredData]);
 
+  /* ================================
+     RECEITAS POR CONTA
+  ==================================*/
   const accountIncomeData = useMemo(() => {
     const colors = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899'];
+
     return accounts
-      .filter(acc => currentUser?.isAdmin ? (selectedUserIdForViewing === 'all' || acc.userId === selectedUserIdForViewing) : acc.userId === currentUser?.id)
+      .filter(acc =>
+        currentUser?.isAdmin
+          ? (selectedUserIdForViewing === 'all' || acc.userId === selectedUserIdForViewing)
+          : acc.userId === currentUser?.id
+      )
       .map((acc, idx) => {
-        const val = filteredData.transactions.filter(t => t.accountId === acc.id && t.type === 'INCOME').reduce((s, t) => s + t.amount, 0) +
-                    filteredData.recurringItems.filter(r => r.accountId === acc.id && r.type === 'INCOME').reduce((s, r) => s + r.amount, 0);
+
+        const val =
+          filteredData.transactions
+            .filter(t => t.accountId === acc.id && t.type === 'INCOME')
+            .reduce((s, t) => s + t.amount, 0)
+          +
+          filteredData.recurringItems
+            .filter(r => r.accountId === acc.id && r.type === 'INCOME')
+            .reduce((s, r) => s + r.amount, 0);
+
         return { name: acc.name, value: val, color: colors[idx % colors.length] };
       })
       .filter(d => d.value > 0);
+
   }, [accounts, filteredData, currentUser, selectedUserIdForViewing]);
 
+  /* ================================
+     FLUXO DIÁRIO (SEM new Date)
+  ==================================*/
   const dailyActivityData = useMemo(() => {
-    const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+
+    const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+
     return Array.from({ length: daysInMonth }).map((_, i) => {
+
       const day = i + 1;
-      const dayIncome = filteredData.transactions.filter(t => new Date(t.date).getDate() === day && t.type === 'INCOME').reduce((s, t) => s + t.amount, 0) +
-                        filteredData.recurringItems.filter(r => r.dayOfMonth === day && r.type === 'INCOME').reduce((s, r) => s + r.amount, 0);
-      const dayExpense = filteredData.transactions.filter(t => new Date(t.date).getDate() === day && t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0) +
-                         filteredData.recurringItems.filter(r => r.dayOfMonth === day && r.type === 'EXPENSE').reduce((s, r) => s + r.amount, 0);
+
+      const dayIncome =
+        filteredData.transactions
+          .filter(t => {
+            const [, , d] = t.date.split("-").map(Number);
+            return d === day && t.type === 'INCOME';
+          })
+          .reduce((s, t) => s + t.amount, 0)
+        +
+        filteredData.recurringItems
+          .filter(r => r.dayOfMonth === day && r.type === 'INCOME')
+          .reduce((s, r) => s + r.amount, 0);
+
+      const dayExpense =
+        filteredData.transactions
+          .filter(t => {
+            const [, , d] = t.date.split("-").map(Number);
+            return d === day && t.type === 'EXPENSE';
+          })
+          .reduce((s, t) => s + t.amount, 0)
+        +
+        filteredData.recurringItems
+          .filter(r => r.dayOfMonth === day && r.type === 'EXPENSE')
+          .reduce((s, r) => s + r.amount, 0);
+
       return { 
         day: `Dia ${day}`, 
         receita: dayIncome, 
         despesa: dayExpense 
       };
     });
+
   }, [filteredData, selectedMonth, selectedYear]);
 
+  /* ================================
+     RENDER
+  ==================================*/
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
 
-      {/* FILTROS (MESMO PADRÃO DO TransactionsView) */}
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-center">
         <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
           <Calendar className="w-4 h-4 text-slate-400" />
+
           <select 
             value={selectedMonth} 
             onChange={(e) => setSelectedMonth(Number(e.target.value))}
             className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"
           >
-            {monthsLabels.map((m, i) => <option key={i} value={i}>{m}</option>)}
+            {monthsLabels.map((m, i) => (
+              <option key={i + 1} value={i + 1}>{m}</option>
+            ))}
           </select>
+
           <select 
             value={selectedYear} 
             onChange={(e) => setSelectedYear(Number(e.target.value))}
             className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"
           >
-            {yearsOptions.map(y => <option key={y} value={y}>{y}</option>)}
+            {yearsOptions.map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
           </select>
         </div>
       </div>

@@ -243,8 +243,8 @@ const App: React.FC = () => {
         return (
           <TransactionsView 
             state={state}
-            categories={state.categories}
-            accounts={state.accounts}
+            categories={filteredCategories}
+            accounts={filteredAccounts}
             addTransaction={addTransaction}
             updateTransaction={updateTransaction}
             deleteTransaction={deleteTransaction}
@@ -406,7 +406,16 @@ const App: React.FC = () => {
                   .map((acc) => {
                     // Lógica de cálculo restaurada para evitar erro de variável indefinida
                     const transBalance = state.transactions
-                      ?.filter(t => t.accountId === acc.id && new Date(t.date).getMonth() === selectedMonth && new Date(t.date).getFullYear() === selectedYear)
+                      ?.filter(t => {
+                        if (t.accountId !== acc.id) return false
+
+                        const [year, month] = t.date.split('-').map(Number)
+
+                        return (
+                          year === selectedYear &&
+                          month - 1 === selectedMonth
+                        )
+                      })
                       .reduce((sum, t) => sum + (t.type === 'INCOME' ? t.amount : -t.amount), 0) || 0;
 
                     const recurBalance = state.recurringItems
@@ -453,10 +462,14 @@ const App: React.FC = () => {
                   .reduce((total, acc) => {
                     const trans = state.transactions?.filter(t => {
                       const tDate = new Date(t.date);
-                      return t.accountId === acc.id && 
-                             tDate.getMonth() === selectedMonth && 
-                             tDate.getFullYear() === selectedYear &&
-                             (effectiveUserId === 'all' || t.userId === effectiveUserId);
+                      return (
+                        t.accountId === acc.id &&
+                        (() => {
+                          const [year, month] = t.date.split('-').map(Number)
+                          return year === selectedYear && month - 1 === selectedMonth
+                        })() &&
+                        (effectiveUserId === 'all' || t.userId === effectiveUserId)
+                      );
                     }) || [];
 
                     const recur = state.recurringItems?.filter(r => {

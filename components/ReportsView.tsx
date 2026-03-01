@@ -12,16 +12,16 @@ interface ReportsViewProps {
   users: User[];
   selectedUserIdForViewing: string | 'all';
   onChangeUserFilter: (userId: string | 'all') => void;
-  selectedMonth: number;
+  selectedMonth: number; // 1–12
   setSelectedMonth: (m: number) => void;
   selectedYear: number;
   setSelectedYear: (y: number) => void;
 }
 
-const ReportsView: React.FC<ReportsViewProps> = ({ 
-  transactions, recurringItems, categories, accounts, currentUser, users, 
-  selectedUserIdForViewing, onChangeUserFilter,
-  selectedMonth, setSelectedMonth, selectedYear, setSelectedYear 
+const ReportsView: React.FC<ReportsViewProps> = ({
+  transactions, recurringItems, categories, accounts, currentUser,
+  users, selectedUserIdForViewing, onChangeUserFilter,
+  selectedMonth, setSelectedMonth, selectedYear, setSelectedYear
 }) => {
 
   const monthsLabels = [
@@ -29,29 +29,37 @@ const ReportsView: React.FC<ReportsViewProps> = ({
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
   ];
 
+  /* ==========================================
+     YEARS OPTIONS (SEM new Date)
+  ========================================== */
   const yearsOptions = useMemo(() => {
-    const currentYear = new Date().getFullYear();
 
+    const currentYear = new Date().getFullYear();
     const allItems = [...transactions, ...recurringItems];
 
     const yearsFromData = allItems
-      .filter(item => {
-        return currentUser?.isAdmin
+      .filter(item =>
+        currentUser?.isAdmin
           ? (selectedUserIdForViewing === 'all' || item.userId === selectedUserIdForViewing)
-          : item.userId === currentUser?.id;
-      })
+          : item.userId === currentUser?.id
+      )
       .map(item => {
-        if (item.date) return new Date(item.date).getFullYear();
-        if (item.startDate) return new Date(item.startDate).getFullYear();
+        if ('date' in item && item.date) {
+          const [year] = item.date.split("-");
+          return Number(year);
+        }
+        if ('startDate' in item && item.startDate) {
+          const [year] = item.startDate.split("-");
+          return Number(year);
+        }
         return currentYear;
       });
 
-    const minYearFromData =
-      yearsFromData.length > 0
-        ? Math.min(...yearsFromData)
-        : currentYear;
+    const minYear = yearsFromData.length > 0
+      ? Math.min(...yearsFromData)
+      : currentYear;
 
-    const startYear = Math.min(currentYear, minYearFromData);
+    const startYear = Math.min(currentYear, minYear);
 
     const years: number[] = [];
     for (let y = startYear; y <= currentYear; y++) {
@@ -59,128 +67,154 @@ const ReportsView: React.FC<ReportsViewProps> = ({
     }
 
     return years;
+
   }, [transactions, recurringItems, currentUser, selectedUserIdForViewing]);
 
+
+  /* ==========================================
+     FILTRO MÊS/ANO (SEM Date)
+  ========================================== */
   const filteredData = useMemo(() => {
+
     const filterByDateAndUser = (item: any) => {
-      const matchesUser = currentUser?.isAdmin 
+
+      const matchesUser = currentUser?.isAdmin
         ? (selectedUserIdForViewing === 'all' || item.userId === selectedUserIdForViewing)
         : item.userId === currentUser?.id;
 
+      if (!matchesUser) return false;
+
       if (item.date) {
-        const d = new Date(item.date);
-        return matchesUser && d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
+        const [year, month] = item.date.split("-").map(Number);
+        return year === selectedYear && month === selectedMonth;
       }
-      
+
       if (item.startDate) {
-        const start = new Date(item.startDate);
-        const diff = (selectedYear - start.getFullYear()) * 12 + (selectedMonth - start.getMonth());
-        const isActive = diff >= 0 && (item.occurrences === undefined || diff < item.occurrences);
-        return matchesUser && isActive;
+        const [startYear, startMonth] = item.startDate.split("-").map(Number);
+
+        const diff =
+          (selectedYear - startYear) * 12 +
+          (selectedMonth - startMonth);
+
+        return diff >= 0 &&
+               (item.occurrences === undefined || diff < item.occurrences);
       }
-      return matchesUser;
+
+      return false;
     };
 
     return {
       transactions: transactions.filter(filterByDateAndUser),
       recurringItems: recurringItems.filter(filterByDateAndUser)
     };
+
   }, [transactions, recurringItems, currentUser, selectedUserIdForViewing, selectedMonth, selectedYear]);
 
+
+  /* ==========================================
+     EVOLUÇÃO MENSAL (6 MESES)
+     (CORRIGIDO PARA 1–12)
+  ========================================== */
   const monthlyData = useMemo(() => {
+
     const monthsMap: Record<string, { month: string, receita: number, despesa: number }> = {};
 
-    const getKeyForTransaction = (dateStr: string, accountId: string) => {
-      const acc = accounts.find(a => a.id === accountId);
-      const date = new Date(dateStr);
-      if (acc?.type === 'CREDIT' && acc.dueDay) {
-        let month = date.getMonth();
-        let year = date.getFullYear();
-        if (date.getDate() > acc.dueDay) {
-          month += 1;
-          if (month > 11) { month = 0; year += 1; }
-        }
-        return `${year}-${(month + 1).toString().padStart(2, '0')}`;
-      }
-      return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
-    };
-    
+    const pad = (n: number) => n.toString().padStart(2, '0');
+
+    // Gera os últimos 6 meses manualmente (sem Date bugado)
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(selectedYear, selectedMonth);
-      d.setMonth(d.getMonth() - i);
-      const key = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+
+      let month = selectedMonth - i;
+      let year = selectedYear;
+
+      while (month <= 0) {
+        month += 12;
+        year -= 1;
+      }
+
+      const key = `${year}-${pad(month)}`;
+
       monthsMap[key] = {
-        month: d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+        month: `${monthsLabels[month - 1].substring(0,3)}/${year.toString().slice(-2)}`,
         receita: 0,
         despesa: 0
       };
     }
 
-    const userTransactions = transactions.filter(t => 
-      currentUser?.isAdmin ? (selectedUserIdForViewing === 'all' || t.userId === selectedUserIdForViewing) : t.userId === currentUser?.id
+    const userTransactions = transactions.filter(t =>
+      currentUser?.isAdmin
+        ? (selectedUserIdForViewing === 'all' || t.userId === selectedUserIdForViewing)
+        : t.userId === currentUser?.id
     );
 
     userTransactions.forEach(t => {
-      const key = getKeyForTransaction(t.date, t.accountId);
+
+      const [yearStr, monthStr] = t.date.split("-");
+      const key = `${yearStr}-${monthStr}`;
+
       if (monthsMap[key]) {
         if (t.type === 'INCOME') monthsMap[key].receita += t.amount;
         else monthsMap[key].despesa += t.amount;
       }
     });
 
-    const userRecurring = recurringItems.filter(r => 
-      currentUser?.isAdmin ? (selectedUserIdForViewing === 'all' || r.userId === selectedUserIdForViewing) : r.userId === currentUser?.id
+    const userRecurring = recurringItems.filter(r =>
+      currentUser?.isAdmin
+        ? (selectedUserIdForViewing === 'all' || r.userId === selectedUserIdForViewing)
+        : r.userId === currentUser?.id
     );
 
     Object.keys(monthsMap).forEach(key => {
-      const [yearStr, monthStr] = key.split('-');
-      const y = parseInt(yearStr, 10);
-      const m = parseInt(monthStr, 10) - 1;
+
+      const [yearStr, monthStr] = key.split("-");
+      const y = Number(yearStr);
+      const m = Number(monthStr);
 
       userRecurring.forEach(r => {
-        const start = r.startDate ? new Date(r.startDate) : null;
-        if (start) {
-          const diff = (y - start.getFullYear()) * 12 + (m - start.getMonth());
-          const isActive = diff >= 0 && (r.occurrences === undefined || diff < r.occurrences);
-          
-          if (isActive) {
-            const acc = accounts.find(a => a.id === r.accountId);
-            let effectiveKey = key;
-            if (acc?.type === 'CREDIT' && acc.dueDay) {
-              const date = new Date(y, m, r.dayOfMonth);
-              effectiveKey = getKeyForTransaction(date.toISOString().split('T')[0], r.accountId);
-            }
-            if (monthsMap[effectiveKey]) {
-              if (r.type === 'INCOME') monthsMap[effectiveKey].receita += r.amount;
-              else monthsMap[effectiveKey].despesa += r.amount;
-            }
-          }
+
+        if (!r.startDate) return;
+
+        const [startYear, startMonth] = r.startDate.split("-").map(Number);
+
+        const diff =
+          (y - startYear) * 12 +
+          (m - startMonth);
+
+        if (diff >= 0 && (r.occurrences === undefined || diff < r.occurrences)) {
+          if (r.type === 'INCOME') monthsMap[key].receita += r.amount;
+          else monthsMap[key].despesa += r.amount;
         }
+
       });
     });
 
     return Object.values(monthsMap);
-  }, [transactions, recurringItems, accounts, selectedMonth, selectedYear, currentUser, selectedUserIdForViewing]);
 
+  }, [transactions, recurringItems, selectedMonth, selectedYear, currentUser, selectedUserIdForViewing]);
+
+
+  /* ==========================================
+     RENDER
+  ========================================== */
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
 
-      {/* FILTROS (MESMO PADRÃO DOS OUTROS COMPONENTES) */}
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-center">
         <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
           <Calendar className="w-4 h-4 text-slate-400" />
-          <select 
-            value={selectedMonth} 
+
+          <select
+            value={selectedMonth}
             onChange={(e) => setSelectedMonth(Number(e.target.value))}
             className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"
           >
             {monthsLabels.map((m, i) => (
-              <option key={i} value={i}>{m}</option>
+              <option key={i + 1} value={i + 1}>{m}</option>
             ))}
           </select>
 
-          <select 
-            value={selectedYear} 
+          <select
+            value={selectedYear}
             onChange={(e) => setSelectedYear(Number(e.target.value))}
             className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer"
           >
@@ -188,6 +222,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
+
         </div>
       </div>
 
