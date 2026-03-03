@@ -121,10 +121,24 @@ const Dashboard: React.FC<DashboardProps> = ({
      DESPESAS POR CATEGORIA
   ==================================*/
   const categoryExpenseData = useMemo(() => {
+
+    const fallbackColors = [
+      '#ef4444',
+      '#f97316',
+      '#eab308',
+      '#22c55e',
+      '#3b82f6',
+      '#8b5cf6',
+      '#ec4899',
+      '#14b8a6',
+      '#6366f1'
+    ];
+
     return categories
       .filter(c => c.type === 'EXPENSE')
-      .map(c => {
-        const val =
+      .map((c, index) => {
+
+        const value =
           filteredData.transactions
             .filter(t => t.categoryId === c.id && t.type === 'EXPENSE')
             .reduce((s, t) => s + t.amount, 0)
@@ -133,26 +147,54 @@ const Dashboard: React.FC<DashboardProps> = ({
             .filter(r => r.categoryId === c.id && r.type === 'EXPENSE')
             .reduce((s, r) => s + r.amount, 0);
 
-        return { name: c.name, value: val, color: c.color };
+        return {
+          name: c.name,
+          value,
+          color: c.color || fallbackColors[index % fallbackColors.length]
+        };
       })
       .filter(d => d.value > 0);
+
   }, [categories, filteredData]);
 
   /* ================================
      RECEITAS POR CONTA
   ==================================*/
   const accountIncomeData = useMemo(() => {
+
     const colors = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899'];
 
     return accounts
       .filter(acc =>
-        currentUser?.isAdmin
-          ? (selectedUserIdForViewing === 'all' || acc.userId === selectedUserIdForViewing)
-          : acc.userId === currentUser?.id
+        acc.type !== 'CREDIT' &&
+        (
+          currentUser?.isAdmin
+            ? (selectedUserIdForViewing === 'all' || acc.userId === selectedUserIdForViewing)
+            : acc.userId === currentUser?.id
+        )
       )
       .map((acc, idx) => {
 
-        const val =
+        // ============================
+        // 1️⃣ Verificar se saldo inicial
+        // deve entrar no mês selecionado
+        // ============================
+
+        let initialValue = 0;
+
+        if (acc.startDate) {
+          const [startYear, startMonth] = acc.startDate.split("-").map(Number);
+
+          if (startYear === selectedYear && startMonth === selectedMonth) {
+            initialValue = acc.initialBalance;
+          }
+        }
+
+        // ============================
+        // 2️⃣ Receitas do mês
+        // ============================
+
+        const income =
           filteredData.transactions
             .filter(t => t.accountId === acc.id && t.type === 'INCOME')
             .reduce((s, t) => s + t.amount, 0)
@@ -161,11 +203,25 @@ const Dashboard: React.FC<DashboardProps> = ({
             .filter(r => r.accountId === acc.id && r.type === 'INCOME')
             .reduce((s, r) => s + r.amount, 0);
 
-        return { name: acc.name, value: val, color: colors[idx % colors.length] };
+        const total = initialValue + income;
+
+        return {
+          name: acc.name,
+          value: total,
+          color: colors[idx % colors.length]
+        };
+
       })
       .filter(d => d.value > 0);
 
-  }, [accounts, filteredData, currentUser, selectedUserIdForViewing]);
+  }, [
+    accounts,
+    filteredData,
+    currentUser,
+    selectedUserIdForViewing,
+    selectedMonth,
+    selectedYear
+  ]);
 
   /* ================================
      FLUXO DIÁRIO (SEM new Date)
@@ -173,6 +229,33 @@ const Dashboard: React.FC<DashboardProps> = ({
   const dailyActivityData = useMemo(() => {
 
     const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+
+    // ============================
+    // Saldo inicial do mês
+    // ============================
+
+    let startingBalance = 0;
+
+    accounts.forEach(acc => {
+
+      const belongsToUser =
+        currentUser?.isAdmin
+          ? (selectedUserIdForViewing === 'all' || acc.userId === selectedUserIdForViewing)
+          : acc.userId === currentUser?.id;
+
+      if (!belongsToUser) return;
+      if (acc.type === 'CREDIT') return;
+
+      if (acc.startDate) {
+        const [startYear, startMonth] = acc.startDate.split("-").map(Number);
+
+        if (startYear === selectedYear && startMonth === selectedMonth) {
+          startingBalance += acc.initialBalance;
+        }
+      }
+    });
+
+    let runningBalance = startingBalance;
 
     return Array.from({ length: daysInMonth }).map((_, i) => {
 
@@ -202,14 +285,25 @@ const Dashboard: React.FC<DashboardProps> = ({
           .filter(r => r.dayOfMonth === day && r.type === 'EXPENSE')
           .reduce((s, r) => s + r.amount, 0);
 
-      return { 
-        day: `Dia ${day}`, 
-        receita: dayIncome, 
-        despesa: dayExpense 
+      runningBalance += dayIncome - dayExpense;
+
+      return {
+        day: `Dia ${day}`,
+        receita: dayIncome,
+        despesa: dayExpense,
+        saldo: runningBalance
       };
+
     });
 
-  }, [filteredData, selectedMonth, selectedYear]);
+  }, [
+    accounts,
+    filteredData,
+    selectedMonth,
+    selectedYear,
+    currentUser,
+    selectedUserIdForViewing
+  ]);
 
   /* ================================
      RENDER
@@ -305,6 +399,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               <Legend verticalAlign="top" align="right" height={36} />
               <Area name="Receita" type="monotone" dataKey="receita" stroke="#10b981" fillOpacity={1} fill="url(#colorIncomeDash)" strokeWidth={3} />
               <Area name="Despesa" type="monotone" dataKey="despesa" stroke="#ef4444" fillOpacity={1} fill="url(#colorExpenseDash)" strokeWidth={3} />
+              <Area name="Saldo" type="monotone" dataKey="saldo" stroke="#6366f1" fillOpacity={0} strokeWidth={3} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
