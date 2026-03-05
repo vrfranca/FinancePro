@@ -23,6 +23,30 @@ import ReportsView from './components/ReportsView';
 import AccountsView from './components/AccountsView';
 import Login from './components/Login';
 
+function getInvoiceMonth(
+  purchaseDate: string,
+  dueDay: number
+): { month: number; year: number } {
+
+  const date = new Date(purchaseDate);
+  const purchaseDay = date.getDate();
+
+  let month = date.getMonth() + 1;
+  let year = date.getFullYear();
+
+  const cutoff = dueDay - 5;
+
+  if (purchaseDay > cutoff) {
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+
+  return { month, year };
+}
+
 const App: React.FC = () => {
   // Load state with migration for isAdmin
   const [state, setState] = useState<AppState>(() => {
@@ -40,7 +64,8 @@ const App: React.FC = () => {
           categories: parsed.categories || INITIAL_CATEGORIES,
           accounts: parsed.accounts || INITIAL_ACCOUNTS,
           transactions: parsed.transactions || [],
-          recurringItems: parsed.recurringItems || []
+          recurringItems: parsed.recurringItems || [],
+          creditInvoices: parsed.creditInvoices || []   // 👈 NOVO
         } as AppState;
       } catch (e) {
         console.error('Failed to parse saved state, using defaults', e);
@@ -52,7 +77,8 @@ const App: React.FC = () => {
       categories: INITIAL_CATEGORIES,
       accounts: INITIAL_ACCOUNTS,
       transactions: [],
-      recurringItems: []
+      recurringItems: [],
+      creditInvoices: []   // 👈 NOVO
     };
   });
 
@@ -72,7 +98,8 @@ const App: React.FC = () => {
       accounts: state.accounts,
       transactions: state.transactions,
       recurringItems: state.recurringItems,
-      currentUser: null // Never persist user session
+      creditInvoices: state.creditInvoices,   // 👈 NOVO
+      currentUser: null
     };
     localStorage.setItem('finance_pro_state', JSON.stringify(dataToSave));
   }, [state]);
@@ -124,19 +151,114 @@ const App: React.FC = () => {
     const recurringExpenses = filteredRecurring.filter(r => r.type === 'EXPENSE').reduce((acc, r) => acc + r.amount, 0);
 
     // accounts balance includes cash/bank plus credit limit for this user
-    const initialAccBalance = filteredAccounts.reduce((acc, a) => acc + a.initialBalance, 0);
-    const creditLimit = filteredAccounts.filter(a => a.type === 'CREDIT').reduce((acc, a) => acc + a.initialBalance, 0);
+    const nonCreditAccounts = filteredAccounts.filter(a => a.type !== 'CREDIT');
+
+    const initialAccBalance = nonCreditAccounts.reduce(
+      (acc, a) => acc + a.initialBalance,
+      0
+    );
+
+    // 🔵 Total faturas de cartão em aberto do usuário
+    const openCreditTotal = state.creditInvoices
+      .filter(inv => {
+        const account = state.accounts.find(a => a.id === inv.accountId);
+        if (!account) return false;
+
+        // pertence ao usuário atual
+        const belongsToUser =
+          state.currentUser?.isAdmin
+            ? true
+            : account.userId === state.currentUser?.id;
+
+        return belongsToUser && !inv.isPaid;
+      })
+      .reduce((sum, inv) => sum + inv.total, 0);
+
     return {
-      totalIncome: income + recurringIncome + creditLimit,
+      totalIncome: income + recurringIncome,
       totalExpense: expenses + recurringExpenses,
-      balance: initialAccBalance + income - expenses + recurringIncome - recurringExpenses
+      balance:
+        initialAccBalance +
+        income -
+        expenses +
+        recurringIncome -
+        recurringExpenses
+        - openCreditTotal
     };
   }, [filteredTransactions, filteredRecurring, filteredAccounts]);
 
   // Transactions
   const addTransaction = (t: Omit<Transaction, 'id' | 'userId'>) => {
-    const newTransaction: Transaction = { ...t, id: Math.random().toString(36).substr(2, 9), userId: state.currentUser?.id || '1' };
-    setState(prev => ({ ...prev, transactions: [newTransaction, ...prev.transactions] }));
+    const newTransaction: Transaction = {
+      ...t,
+      id: Math.random().toString(36).substr(2, 9),
+      userId: state.currentUser?.id || '1'
+    };
+
+    const account = state.accounts.find(a => a.id === newTransaction.accountId);
+
+    // 🔵 Se for cartão de crédito → NÃO impacta saldo direto
+    if (account?.type === 'CREDIT') {
+
+      const { month, year } = getInvoiceMonth(
+        newTransaction.date,
+        account.dueDay!
+      );
+
+      setState(prev => {
+
+        // procurar fatura existente
+        const existingInvoice = prev.creditInvoices.find(inv =>
+          inv.accountId === account.id &&
+          inv.month === month &&
+          inv.year === year
+        );
+
+        const invoiceItem = {
+          id: Math.random().toString(36).substr(2, 9),
+          transactionId: newTransaction.id,
+          description: newTransaction.description,
+          amount: newTransaction.amount
+        };
+
+        if (existingInvoice) {
+          const updatedInvoices = prev.creditInvoices.map(inv =>
+            inv.id === existingInvoice.id
+              ? {
+                  ...inv,
+                  items: [...inv.items, invoiceItem],
+                  total: inv.total + newTransaction.amount
+                }
+              : inv
+          );
+
+          return { ...prev, creditInvoices: updatedInvoices };
+        }
+
+        const newInvoice = {
+          id: Math.random().toString(36).substr(2, 9),
+          accountId: account.id,
+          month,
+          year,
+          items: [invoiceItem],
+          total: newTransaction.amount,
+          isPaid: false
+        };
+
+        return {
+          ...prev,
+          creditInvoices: [...prev.creditInvoices, newInvoice]
+        };
+      });
+
+      return;
+    }
+
+    // 🟢 Conta normal → fluxo antigo
+    setState(prev => ({
+      ...prev,
+      transactions: [newTransaction, ...prev.transactions]
+    }));
   };
 
   // Accounts (user-specific)
@@ -163,10 +285,93 @@ const App: React.FC = () => {
 
   // Recurring
   const addRecurring = (r: Omit<RecurringItem, 'id' | 'userId'>) => {
-    const newItem: RecurringItem = { ...r, id: Math.random().toString(36).substr(2, 9), userId: state.currentUser?.id || '1' };
-    // if the caller didn't provide startDate (new items), set now
-    if (!newItem.startDate) newItem.startDate = new Date().toISOString();
-    setState(prev => ({ ...prev, recurringItems: [...prev.recurringItems, newItem] }));
+    const newItem: RecurringItem = {
+      ...r,
+      id: Math.random().toString(36).substr(2, 9),
+      userId: state.currentUser?.id || '1'
+    };
+
+    if (!newItem.startDate) {
+      newItem.startDate = new Date().toISOString();
+    }
+
+    const account = state.accounts.find(a => a.id === newItem.accountId);
+
+    // 🔵 Se for cartão de crédito
+    if (account?.type === 'CREDIT') {
+
+      const occurrences = newItem.occurrences ?? 1;
+      const start = new Date(newItem.startDate);
+
+      setState(prev => {
+
+        let updatedInvoices = [...prev.creditInvoices];
+
+        for (let i = 0; i < occurrences; i++) {
+
+          const installmentDate = new Date(
+            start.getFullYear(),
+            start.getMonth() + i,
+            start.getDate()
+          );
+
+          const { month, year } = getInvoiceMonth(
+            installmentDate.toISOString(),
+            account.dueDay!
+          );
+
+          const existingInvoice = updatedInvoices.find(inv =>
+            inv.accountId === account.id &&
+            inv.month === month &&
+            inv.year === year
+          );
+
+          const invoiceItem = {
+            id: Math.random().toString(36).substr(2, 9),
+            recurringItemId: newItem.id,
+            description: newItem.description,
+            amount: newItem.amount,
+            installment: i + 1,
+            totalInstallments: occurrences
+          };
+
+          if (existingInvoice) {
+            updatedInvoices = updatedInvoices.map(inv =>
+              inv.id === existingInvoice.id
+                ? {
+                    ...inv,
+                    items: [...inv.items, invoiceItem],
+                    total: inv.total + newItem.amount
+                  }
+                : inv
+            );
+          } else {
+            updatedInvoices.push({
+              id: Math.random().toString(36).substr(2, 9),
+              accountId: account.id,
+              month,
+              year,
+              items: [invoiceItem],
+              total: newItem.amount,
+              isPaid: false
+            });
+          }
+        }
+
+        return {
+          ...prev,
+          creditInvoices: updatedInvoices
+        };
+      });
+
+      return;
+    }
+
+    // 🟢 Conta normal → comportamento antigo
+    setState(prev => ({
+      ...prev,
+      recurringItems: [...prev.recurringItems, newItem]
+    }));
   };
 
   const updateRecurring = (id: string, updates: Partial<RecurringItem>) => {
@@ -402,7 +607,7 @@ const App: React.FC = () => {
             {!state.currentUser?.isAdmin && (
               <div className="hidden lg:flex items-center gap-6 border-r border-slate-100 pr-6">
                 {state.accounts
-                  ?.filter(acc => acc.userId === state.currentUser?.id)
+                  ?.filter(acc => acc.userId === state.currentUser?.id && acc.type !== 'CREDIT')
                   .map((acc) => {
                     // Lógica de cálculo restaurada para evitar erro de variável indefinida
                     const transBalance = state.transactions
@@ -458,7 +663,10 @@ const App: React.FC = () => {
                 const effectiveUserId = state.currentUser?.isAdmin ? 'all' : state.currentUser?.id;
                 
                 const totalFiltered = state.accounts
-                  ?.filter(acc => effectiveUserId === 'all' || acc.userId === effectiveUserId)
+                  ?.filter(acc =>
+                    (effectiveUserId === 'all' || acc.userId === effectiveUserId) &&
+                    acc.type !== 'CREDIT'
+                  )
                   .reduce((total, acc) => {
                     const trans = state.transactions?.filter(t => {
                       const tDate = new Date(t.date);

@@ -137,7 +137,8 @@ const ReportsView: React.FC<ReportsViewProps> = ({
       monthsMap[key] = {
         month: `${monthsLabels[month - 1].substring(0,3)}/${year.toString().slice(-2)}`,
         receita: 0,
-        despesa: 0
+        despesa: 0,
+        saldo: 0
       };
     }
 
@@ -188,7 +189,16 @@ const ReportsView: React.FC<ReportsViewProps> = ({
       });
     });
 
-    return Object.values(monthsMap);
+    const orderedMonths = Object.values(monthsMap);
+
+      let runningBalance = 0;
+
+      orderedMonths.forEach(m => {
+        runningBalance += m.receita - m.despesa;
+        m.saldo = runningBalance;
+      });
+
+      return orderedMonths;
 
   }, [transactions, recurringItems, selectedMonth, selectedYear, currentUser, selectedUserIdForViewing]);
 
@@ -249,6 +259,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({
               <Legend verticalAlign="top" height={36}/>
               <Area type="monotone" dataKey="receita" stroke="#10b981" fillOpacity={1} fill="url(#colorIncome)" strokeWidth={3} />
               <Area type="monotone" dataKey="despesa" stroke="#ef4444" fillOpacity={1} fill="url(#colorExpense)" strokeWidth={3} />
+              <Area type="monotone" dataKey="saldo" stroke="#6366f1" fillOpacity={0} strokeWidth={3} />
             </AreaChart>
           </ResponsiveContainer>
         </div>

@@ -38,7 +38,12 @@ export interface Transaction {
   accountId: string;
   type: TransactionType;
   isRecurring: boolean;
-  notes?: string; // adiciona como opcional
+
+  // NEW: number of installments (used mainly for CREDIT accounts)
+  // if undefined or 1 → treated as single payment
+  installments?: number;
+
+  notes?: string;
 }
 
 export interface RecurringItem {
@@ -57,6 +62,27 @@ export interface RecurringItem {
   startDate?: string;
 }
 
+export interface CreditInvoiceItem {
+  id: string;
+  transactionId?: string;      // se veio de transaction normal
+  recurringItemId?: string;    // se veio de recorrência
+  description: string;
+  amount: number;
+  installment?: number;
+  totalInstallments?: number;
+}
+
+export interface CreditInvoice {
+  id: string;
+  accountId: string;   // conta CREDIT
+  month: number;       // 1-12
+  year: number;
+  items: CreditInvoiceItem[];
+  total: number;
+  isPaid: boolean;
+  paidAt?: string;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -68,10 +94,10 @@ export interface User {
 }
 
 export interface AppState {
-  currentUser: User | null;
-  users: User[];
   categories: Category[];
   accounts: Account[];
   transactions: Transaction[];
   recurringItems: RecurringItem[];
+  creditInvoices: CreditInvoice[];   // 👈 NOVO
+  users: User[];
 }

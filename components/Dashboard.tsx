@@ -224,6 +224,98 @@ const Dashboard: React.FC<DashboardProps> = ({
   ]);
 
   /* ================================
+    FATURA CARTÃO (MODELO REAL)
+  ==================================*/
+  const creditImpactByAccount = useMemo(() => {
+
+    const result: Record<string, { dueDay: number; amount: number }> = {};
+
+    const creditAccounts = accounts.filter(acc =>
+      acc.type === 'CREDIT' &&
+      (
+        currentUser?.isAdmin
+          ? (selectedUserIdForViewing === 'all' || acc.userId === selectedUserIdForViewing)
+          : acc.userId === currentUser?.id
+      )
+    );
+
+    creditAccounts.forEach(acc => {
+
+      let totalExpense = 0;
+      let totalIncome = 0;
+
+      // TRANSAÇÕES PARCELADAS / NORMAIS
+      transactions.forEach(t => {
+
+        if (t.accountId !== acc.id) return;
+
+        const matchesUser = currentUser?.isAdmin
+          ? (selectedUserIdForViewing === 'all' || t.userId === selectedUserIdForViewing)
+          : t.userId === currentUser?.id;
+
+        if (!matchesUser) return;
+
+        const [year, month] = t.date.split("-").map(Number);
+
+        if (year !== selectedYear || month !== selectedMonth) return;
+
+        if (t.type === 'EXPENSE') totalExpense += t.amount;
+        if (t.type === 'INCOME') totalIncome += t.amount;
+      });
+
+      // RECORRENTES / PARCELAS
+      recurringItems.forEach(r => {
+
+        if (r.accountId !== acc.id) return;
+
+        const matchesUser = currentUser?.isAdmin
+          ? (selectedUserIdForViewing === 'all' || r.userId === selectedUserIdForViewing)
+          : r.userId === currentUser?.id;
+
+        if (!matchesUser) return;
+
+        if (!r.startDate) return;
+
+        const [startYear, startMonth] = r.startDate.split("-").map(Number);
+
+        const diff =
+          (selectedYear - startYear) * 12 +
+          (selectedMonth - startMonth);
+
+        const isActive =
+          diff >= 0 &&
+          (r.occurrences === undefined || diff < r.occurrences);
+
+        if (!isActive) return;
+
+        if (r.type === 'EXPENSE') totalExpense += r.amount;
+        if (r.type === 'INCOME') totalIncome += r.amount;
+      });
+
+      const net = totalExpense - totalIncome;
+
+      if (net !== 0) {
+        result[acc.id] = {
+          dueDay: acc.dueDay || 1,
+          amount: net
+        };
+      }
+
+    });
+
+    return result;
+
+  }, [
+    accounts,
+    transactions,
+    recurringItems,
+    currentUser,
+    selectedUserIdForViewing,
+    selectedMonth,
+    selectedYear
+  ]);
+
+  /* ================================
      FLUXO DIÁRIO (SEM new Date)
   ==================================*/
   const dailyActivityData = useMemo(() => {
@@ -286,6 +378,13 @@ const Dashboard: React.FC<DashboardProps> = ({
           .reduce((s, r) => s + r.amount, 0);
 
       runningBalance += dayIncome - dayExpense;
+
+      // IMPACTO FATURA CARTÃO NO DUE DAY
+      Object.values(creditImpactByAccount).forEach(card => {
+        if (card.dueDay === day) {
+          runningBalance -= card.amount;
+        }
+      });
 
       return {
         day: `Dia ${day}`,
