@@ -4,6 +4,13 @@ import { Calendar } from 'lucide-react';
 import { Transaction, Category, RecurringItem, User, Account } from '../types';
 
 interface ReportsViewProps {
+  stats: {
+    totalIncome: number;
+    totalExpense: number;
+    balance: number;
+    openCreditTotal: number;
+    projectedBalance: number;
+  };
   transactions: Transaction[];
   recurringItems: RecurringItem[];
   categories: Category[];
@@ -19,8 +26,8 @@ interface ReportsViewProps {
 }
 
 const ReportsView: React.FC<ReportsViewProps> = ({
-  transactions, recurringItems, categories, accounts, currentUser,
-  users, selectedUserIdForViewing, onChangeUserFilter,
+  stats, transactions, recurringItems, categories, accounts, 
+  currentUser, users, selectedUserIdForViewing, onChangeUserFilter,
   selectedMonth, setSelectedMonth, selectedYear, setSelectedYear
 }) => {
 
@@ -112,18 +119,15 @@ const ReportsView: React.FC<ReportsViewProps> = ({
 
 
   /* ==========================================
-     EVOLUÇÃO MENSAL (6 MESES)
-     (CORRIGIDO PARA 1–12)
+      EVOLUÇÃO MENSAL (6 MESES) - CORREÇÃO DE TIPO
   ========================================== */
   const monthlyData = useMemo(() => {
-
-    const monthsMap: Record<string, { month: string, receita: number, despesa: number }> = {};
+    // Definimos a interface aqui ou usamos um tipo inline para o Record
+    const monthsMap: Record<string, { month: string, receita: number, despesa: number, saldo: number }> = {};
 
     const pad = (n: number) => n.toString().padStart(2, '0');
 
-    // Gera os últimos 6 meses manualmente (sem Date bugado)
     for (let i = 5; i >= 0; i--) {
-
       let month = selectedMonth - i;
       let year = selectedYear;
 
@@ -134,11 +138,12 @@ const ReportsView: React.FC<ReportsViewProps> = ({
 
       const key = `${year}-${pad(month)}`;
 
+      // Agora incluímos o 'saldo' na inicialização com valor 0
       monthsMap[key] = {
         month: `${monthsLabels[month - 1].substring(0,3)}/${year.toString().slice(-2)}`,
         receita: 0,
         despesa: 0,
-        saldo: 0
+        saldo: 0 // <-- Adicionado aqui
       };
     }
 

@@ -14,10 +14,12 @@ export const INITIAL_CATEGORIES: Category[] = [
   //{ id: 'c5', name: 'Transporte', type: 'EXPENSE', color: '#8b5cf6' },
   //{ id: 'c6', name: 'Lazer', type: 'EXPENSE', color: '#ec4899' },
   {
-    id: 'credit-card-payment',
-    name: 'Pagamento de Fatura',
-    type: 'EXPENSE',
-    color: '#6366f1'
+    id: '1', 
+    name: 'Salário', 
+    type: 'INCOME', 
+    icon: 'briefcase', 
+    color: '#10b981', 
+    userId: '1'
   }
 ];
 

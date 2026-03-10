@@ -8,6 +8,13 @@ import { Transaction, Category, RecurringItem, User, Account } from '../types';
 import { CreditInvoice } from '../types';
 
 interface DashboardProps {
+  stats: {
+    totalIncome: number;
+    totalExpense: number;
+    balance: number;
+    openCreditTotal: number;
+    projectedBalance: number;
+  };
   transactions: Transaction[];
   recurringItems: RecurringItem[];
   categories: Category[];
@@ -24,9 +31,9 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
-  transactions, recurringItems, categories, accounts, currentUser, users, 
-  selectedUserIdForViewing, onChangeUserFilter,
-  selectedMonth, setSelectedMonth, selectedYear, setSelectedYear, creditInvoices
+  stats, transactions, recurringItems, categories, accounts, currentUser,  
+  users, selectedUserIdForViewing, onChangeUserFilter, selectedMonth,
+  setSelectedMonth, selectedYear, setSelectedYear, creditInvoices
 }) => {
 
   const monthsLabels = [

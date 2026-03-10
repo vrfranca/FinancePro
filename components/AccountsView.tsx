@@ -30,9 +30,19 @@ const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onAdd, onUpdate, 
     e.preventDefault();
     const numericBal = parseFloat(formData.initialBalance);
     const due = formData.dueDay ? parseInt(formData.dueDay) : undefined;
-    const data: Omit<Account, 'id' | 'userId'> = { name: formData.name, type: formData.type, initialBalance: numericBal, ...(formData.type === 'CREDIT' && due ? { dueDay: due } : {}) };
+
+    // Criamos o objeto seguindo o "contrato" da interface Account
+    const data: Omit<Account, 'id' | 'userId'> = { 
+      name: formData.name, 
+      type: formData.type, 
+      initialBalance: numericBal,
+      startDate: new Date().toISOString().split('T')[0], // <-- ADICIONE ESTA LINHA (formato YYYY-MM-DD)
+      ...(formData.type === 'CREDIT' && due ? { dueDay: due } : {}) 
+    };
+
     if (editingId) onUpdate(editingId, data);
     else onAdd(data);
+    
     setModalOpen(false);
     setEditingId(null);
   };

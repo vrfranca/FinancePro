@@ -1,16 +1,18 @@
 import React, { useState, useMemo } from "react";
-import { CreditInvoice, Account } from "../types";
+import { CreditInvoice, Account, Category } from "../types";
 import { CreditCard, Calendar, Wallet } from "lucide-react";
 
 interface Props {
   invoices: CreditInvoice[];
   accounts: Account[];
+  categories: Category[];
   onPayInvoice: (invoiceId: string, paymentAccountId: string) => void;
 }
 
 const CreditCardView: React.FC<Props> = ({
   invoices,
   accounts,
+  categories,
   onPayInvoice
 }) => {
 

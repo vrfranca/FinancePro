@@ -6,6 +6,8 @@ export interface Category {
   name: string;
   type: TransactionType;
   color: string;
+  userId: string;
+  icon: string;
 }
 
 export interface Account {
@@ -91,6 +93,8 @@ export interface User {
   active?: boolean;
   username?: string;
   isAdmin?: boolean;
+  mustChangePassword?: boolean;
+  isBlocked?: boolean;
 }
 
 export interface AppState {
@@ -98,6 +102,7 @@ export interface AppState {
   accounts: Account[];
   transactions: Transaction[];
   recurringItems: RecurringItem[];
-  creditInvoices: CreditInvoice[];   // 👈 NOVO
+  creditInvoices: CreditInvoice[];   
   users: User[];
+  currentUser: User | null;
 }

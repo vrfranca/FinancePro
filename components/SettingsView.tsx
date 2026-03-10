@@ -10,9 +10,12 @@ interface SettingsViewProps {
   state: AppState;
   onUpdate: (updates: Partial<AppState>) => void;
   onlyUsers: boolean;
+  currentUser: User | null;
+  categories: Category[];
+  accounts: Account[];
 }
 
-const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers }) => {
+const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers, currentUser, categories, accounts }) => {
 
   const isAdmin = state.currentUser?.isAdmin === true;
 
@@ -34,10 +37,16 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers 
     return state.accounts.filter(a => a.userId === state.currentUser!.id);
   }, [state.accounts, state.currentUser, isAdmin]);
 
-  const [catForm, setCatForm] = useState<{ name: string; type: TransactionType; color: string }>({
+  const [catForm, setCatForm] = useState<{ 
+    name: string; 
+    type: TransactionType; 
+    color: string; 
+    icon: string; // Mudamos de 'tag' para string para ser mais flexível
+  }>({
     name: '',
     type: 'EXPENSE',
-    color: '#ef4444'
+    color: '#ef4444',
+    icon: 'tag'
   });
 
   const [accForm, setAccForm] = useState<{ 
@@ -67,14 +76,26 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers 
   // =========================
 
   const handleOpenCatModal = (item?: Category) => {
-    if (item) {
-      setEditingItem(item);
-      setCatForm({ name: item.name, type: item.type, color: item.color });
-    } else {
-      setEditingItem(null);
-      setCatForm({ name: '', type: 'EXPENSE', color: '#ef4444' });
-    }
-    setModalType('category');
+      if (item) {
+        setEditingItem(item);
+        // Ao editar, passamos o ícone que já existe na categoria
+        setCatForm({ 
+          name: item.name, 
+          type: item.type, 
+          color: item.color,
+          icon: item.icon 
+        });
+      } else {
+        setEditingItem(null);
+        // Ao criar uma nova, definimos o ícone padrão
+        setCatForm({ 
+          name: '', 
+          type: 'EXPENSE', 
+          color: '#ef4444',
+          icon: 'tag' 
+        });
+      }
+      setModalType('category');
   };
 
   const handleSaveCategory = (e: React.FormEvent) => {
@@ -96,7 +117,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers 
             userId: state.currentUser.id,
             name: catForm.name,
             type: catForm.type,
-            color: catForm.color
+            color: catForm.color,
+            icon: catForm.icon || 'tag'
           }
         ]
       });
@@ -377,10 +399,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers 
                         onClick={() => {
                           setEditingUser(user);
                           setNewName(user.name);
-                          setNewUsername(user.username);
+                          setNewUsername(user.username || ''); // Garantindo que não seja undefined
                           setNewEmail(user.email);
-                          setNewPassword(user.password);
-                          setNewPassword2(user.password);
+                          
+                          // CORREÇÃO: Deixe os campos de senha vazios no modal de edição
+                          setNewPassword(''); 
+                          setNewPassword2(''); 
+                          
                           setAddUserError('');
                           setShowAddUserModal(true);
                         }}

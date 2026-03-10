@@ -200,7 +200,6 @@ const App: React.FC = () => {
 
   // Transactions
   const addTransaction = (t: Omit<Transaction, 'id' | 'userId'>) => {
-
     const newTransaction: Transaction = {
       ...t,
       id: Math.random().toString(36).substr(2, 9),
@@ -209,26 +208,15 @@ const App: React.FC = () => {
 
     const account = state.accounts.find(a => a.id === newTransaction.accountId);
 
-    // SALVAR SEMPRE A TRANSAÇÃO
-    setState(prev => ({
-      ...prev,
-      transactions: [newTransaction, ...prev.transactions]
-    }));
+    setState(prev => {
+      let nextInvoices = prev.creditInvoices;
 
-    // 🔵 Se for cartão de crédito → NÃO impacta saldo direto
-    if (account?.type === 'CREDIT') {
-
-      const { month, year } = getInvoiceMonth(
-        newTransaction.date,
-        account.dueDay!
-      );
-
-      setState(prev => {
-
+      // Se for cartão de crédito, atualizamos a fatura internamente no mesmo setState
+      if (account?.type === 'CREDIT') {
+        const { month, year } = getInvoiceMonth(newTransaction.date, account.dueDay!);
+        
         const existingInvoice = prev.creditInvoices.find(inv =>
-          inv.accountId === account.id &&
-          inv.month === month &&
-          inv.year === year
+          inv.accountId === account.id && inv.month === month && inv.year === year
         );
 
         const invoiceItem = {
@@ -239,43 +227,30 @@ const App: React.FC = () => {
         };
 
         if (existingInvoice) {
-
-          const updatedInvoices = prev.creditInvoices.map(inv =>
+          nextInvoices = prev.creditInvoices.map(inv =>
             inv.id === existingInvoice.id
-              ? {
-                  ...inv,
-                  items: [...inv.items, invoiceItem],
-                  total: inv.total + newTransaction.amount
-                }
+              ? { ...inv, items: [...inv.items, invoiceItem], total: inv.total + newTransaction.amount }
               : inv
           );
-
-          return { ...prev, creditInvoices: updatedInvoices };
+        } else {
+          nextInvoices = [...prev.creditInvoices, {
+            id: Math.random().toString(36).substr(2, 9),
+            accountId: account.id,
+            month, year,
+            items: [invoiceItem],
+            total: newTransaction.amount,
+            isPaid: false
+          }];
         }
+      }
 
-        const newInvoice = {
-          id: Math.random().toString(36).substr(2, 9),
-          accountId: account.id,
-          month,
-          year,
-          items: [invoiceItem],
-          total: newTransaction.amount,
-          isPaid: false
-        };
-
-        return {
-          ...prev,
-          creditInvoices: [...prev.creditInvoices, newInvoice]
-        };
-      });
-
-    }
-
-    // 🟢 Conta normal → fluxo antigo
-    setState(prev => ({
-      ...prev,
-      transactions: [newTransaction, ...prev.transactions]
-    }));
+      // Retorna o estado único com a transação E a fatura atualizada
+      return {
+        ...prev,
+        transactions: [newTransaction, ...prev.transactions],
+        creditInvoices: nextInvoices
+      };
+    });
   };
 
   // Accounts (user-specific)
@@ -506,6 +481,9 @@ const App: React.FC = () => {
             state={state} 
             onUpdate={(updates) => setState(prev => ({ ...prev, ...updates }))} 
             onlyUsers={true} 
+            currentUser={state.currentUser}
+            categories={state.categories} 
+            accounts={state.accounts}
           />
         );
 
@@ -520,6 +498,7 @@ const App: React.FC = () => {
             currentUser={state.currentUser}
             users={state.users}
             selectedUserIdForViewing={state.currentUser?.isAdmin ? 'all' : state.currentUser?.id}
+            onChangeUserFilter={setSelectedUserIdForViewing}
             selectedMonth={selectedMonth}
             setSelectedMonth={setSelectedMonth}
             selectedYear={selectedYear}
@@ -583,7 +562,8 @@ const App: React.FC = () => {
           date: paymentDate,
           accountId: paymentAccountId,
           categoryId: 'credit-card-payment',
-          userId: prev.currentUser!.id
+          userId: prev.currentUser!.id,
+          isRecurring: false
         };
 
         const updatedInvoices = prev.creditInvoices.map(i =>

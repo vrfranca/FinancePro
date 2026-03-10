@@ -6,9 +6,10 @@ type Props = {
   users: User[];
   onLogin: (u: User) => void;
   onSetUserPassword: (userId: string, passwordHash: string) => void;
+  onAddUser: (u: { name: string; username?: string; email: string; passwordHash?: string }) => void;
 };
 
-const Login: React.FC<Props> = ({ users, onLogin, onSetUserPassword }) => {
+const Login: React.FC<Props> = ({ users, onLogin, onSetUserPassword, onAddUser }) => {
   const [selected, setSelected] = useState<User | null>(null);
   const [mode, setMode] = useState<'choose' | 'enter' | 'create' | 'change'>('choose');
   const [pass, setPass] = useState('');
