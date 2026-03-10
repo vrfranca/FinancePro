@@ -13,6 +13,12 @@ export const INITIAL_CATEGORIES: Category[] = [
   //{ id: 'c4', name: 'Freela', type: 'INCOME', color: '#3b82f6' },
   //{ id: 'c5', name: 'Transporte', type: 'EXPENSE', color: '#8b5cf6' },
   //{ id: 'c6', name: 'Lazer', type: 'EXPENSE', color: '#ec4899' },
+  {
+    id: 'credit-card-payment',
+    name: 'Pagamento de Fatura',
+    type: 'EXPENSE',
+    color: '#6366f1'
+  }
 ];
 
 export const INITIAL_ACCOUNTS: Account[] = [

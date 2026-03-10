@@ -22,6 +22,7 @@ import SettingsView from './components/SettingsView';
 import ReportsView from './components/ReportsView';
 import AccountsView from './components/AccountsView';
 import Login from './components/Login';
+import CreditCardView from './components/CreditCardView';
 
 function getInvoiceMonth(
   purchaseDate: string,
@@ -87,7 +88,7 @@ const App: React.FC = () => {
   const [isUserMenuOpen, setUserMenuOpen] = useState(false);
   const [selectedUserIdForViewing, setSelectedUserIdForViewing] = useState<string | 'all'>('all');
 
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
   useEffect(() => {
@@ -174,21 +175,32 @@ const App: React.FC = () => {
       })
       .reduce((sum, inv) => sum + inv.total, 0);
 
+    const balance =
+      initialAccBalance +
+      income -
+      expenses +
+      recurringIncome -
+      recurringExpenses;
+
     return {
       totalIncome: income + recurringIncome,
       totalExpense: expenses + recurringExpenses,
-      balance:
-        initialAccBalance +
-        income -
-        expenses +
-        recurringIncome -
-        recurringExpenses
-        - openCreditTotal
+      balance,
+      openCreditTotal,
+      projectedBalance: balance - openCreditTotal
     };
-  }, [filteredTransactions, filteredRecurring, filteredAccounts]);
+      }, [
+      filteredTransactions,
+      filteredRecurring,
+      filteredAccounts,
+      state.creditInvoices,
+      state.accounts,
+      state.currentUser
+    ]);
 
   // Transactions
   const addTransaction = (t: Omit<Transaction, 'id' | 'userId'>) => {
+
     const newTransaction: Transaction = {
       ...t,
       id: Math.random().toString(36).substr(2, 9),
@@ -196,6 +208,12 @@ const App: React.FC = () => {
     };
 
     const account = state.accounts.find(a => a.id === newTransaction.accountId);
+
+    // SALVAR SEMPRE A TRANSAÇÃO
+    setState(prev => ({
+      ...prev,
+      transactions: [newTransaction, ...prev.transactions]
+    }));
 
     // 🔵 Se for cartão de crédito → NÃO impacta saldo direto
     if (account?.type === 'CREDIT') {
@@ -207,7 +225,6 @@ const App: React.FC = () => {
 
       setState(prev => {
 
-        // procurar fatura existente
         const existingInvoice = prev.creditInvoices.find(inv =>
           inv.accountId === account.id &&
           inv.month === month &&
@@ -222,6 +239,7 @@ const App: React.FC = () => {
         };
 
         if (existingInvoice) {
+
           const updatedInvoices = prev.creditInvoices.map(inv =>
             inv.id === existingInvoice.id
               ? {
@@ -251,7 +269,6 @@ const App: React.FC = () => {
         };
       });
 
-      return;
     }
 
     // 🟢 Conta normal → fluxo antigo
@@ -441,6 +458,7 @@ const App: React.FC = () => {
             setSelectedMonth={setSelectedMonth}
             selectedYear={selectedYear}
             setSelectedYear={setSelectedYear}
+            creditInvoices={state.creditInvoices}
           />
         );
 
@@ -458,6 +476,16 @@ const App: React.FC = () => {
 
       case 'recurring':
         return <RecurringView items={filteredRecurring} categories={state.categories} accounts={filteredAccounts} onAdd={addRecurring} onUpdate={updateRecurring} onDelete={deleteRecurring} />;
+      
+      case 'credit_cards':
+        return (
+          <CreditCardView
+            invoices={state.creditInvoices}
+            accounts={filteredAccounts}
+            categories={filteredCategories}
+            onPayInvoice={payCreditInvoice}
+          />
+        );
 
       case 'settings':
         return (
@@ -514,12 +542,12 @@ const App: React.FC = () => {
           setSelectedMonth={setSelectedMonth}
           selectedYear={selectedYear}
           setSelectedYear={setSelectedYear}
+          creditInvoices={state.creditInvoices}
         />;
     }
   };
 
     const menuItems = [
-      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
       ...(state.currentUser?.isAdmin ? [
         // Menu exclusivo do Admin
         { id: 'users_admin', label: 'Usuários', icon: UserIcon }, 
@@ -527,10 +555,50 @@ const App: React.FC = () => {
         // Menu exclusivo do Usuário
         { id: 'transactions', label: 'Movimentações', icon: ArrowLeftRight },
         { id: 'recurring', label: 'Recorrentes', icon: Repeat },
+        { id: 'credit_cards', label: 'Faturas', icon: CreditCard },
         { id: 'settings', label: 'Parâmetros', icon: Settings }, // Agora usuários comuns acessam aqui
       ]),
+      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { id: 'reports', label: 'Relatórios', icon: PieChart },
     ];
+
+    const payCreditInvoice = (invoiceId: string, paymentAccountId: string) => {
+
+      setState(prev => {
+
+        const invoice = prev.creditInvoices.find(i => i.id === invoiceId);
+        if (!invoice) return prev;
+
+        const account = prev.accounts.find(a => a.id === invoice.accountId);
+        if (!account) return prev;
+
+        const paymentDate =
+          `${invoice.year}-${String(invoice.month).padStart(2,'0')}-${String(account.dueDay || 1).padStart(2,'0')}`;
+
+        const paymentTransaction: Transaction = {
+          id: Math.random().toString(36).substr(2,9),
+          description: `Pagamento fatura ${account.name}`,
+          amount: invoice.total,
+          type: 'EXPENSE',
+          date: paymentDate,
+          accountId: paymentAccountId,
+          categoryId: 'credit-card-payment',
+          userId: prev.currentUser!.id
+        };
+
+        const updatedInvoices = prev.creditInvoices.map(i =>
+          i.id === invoiceId ? { ...i, isPaid: true } : i
+        );
+
+        return {
+          ...prev,
+          creditInvoices: updatedInvoices,
+          transactions: [paymentTransaction, ...prev.transactions]
+        };
+
+      });
+
+    };
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 overflow-hidden">

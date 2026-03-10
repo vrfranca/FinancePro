@@ -5,6 +5,7 @@ import {
   ResponsiveContainer, Cell, PieChart as PieChartIcon, Pie, Legend 
 } from 'recharts';
 import { Transaction, Category, RecurringItem, User, Account } from '../types';
+import { CreditInvoice } from '../types';
 
 interface DashboardProps {
   transactions: Transaction[];
@@ -19,12 +20,13 @@ interface DashboardProps {
   setSelectedMonth: (m: number) => void;
   selectedYear: number;
   setSelectedYear: (y: number) => void;
+  creditInvoices: CreditInvoice[];
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
   transactions, recurringItems, categories, accounts, currentUser, users, 
   selectedUserIdForViewing, onChangeUserFilter,
-  selectedMonth, setSelectedMonth, selectedYear, setSelectedYear 
+  selectedMonth, setSelectedMonth, selectedYear, setSelectedYear, creditInvoices
 }) => {
 
   const monthsLabels = [
@@ -205,6 +207,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         const total = initialValue + income;
 
+
         return {
           name: acc.name,
           value: total,
@@ -217,10 +220,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, [
     accounts,
     filteredData,
-    currentUser,
-    selectedUserIdForViewing,
     selectedMonth,
-    selectedYear
+    selectedYear,
+    currentUser,
+    selectedUserIdForViewing
   ]);
 
   /* ================================
@@ -404,11 +407,69 @@ const Dashboard: React.FC<DashboardProps> = ({
     selectedUserIdForViewing
   ]);
 
+  const openInvoicesTotal = useMemo(() => {
+    return creditInvoices
+      .filter(i =>
+        !i.isPaid &&
+        (
+          i.year < selectedYear ||
+          (i.year === selectedYear && i.month <= selectedMonth)
+        )
+      )
+      .reduce((sum, i) => sum + i.total, 0);
+  }, [creditInvoices, selectedMonth, selectedYear]);
+
+  const totalBalance = useMemo(() => {
+
+    return accounts
+      .filter(acc =>
+        acc.type !== "CREDIT" &&
+        (
+          currentUser?.isAdmin
+            ? (selectedUserIdForViewing === "all" || acc.userId === selectedUserIdForViewing)
+            : acc.userId === currentUser?.id
+        )
+      )
+      .reduce((sum, acc) => sum + acc.initialBalance, 0);
+
+  }, [accounts, currentUser, selectedUserIdForViewing]);
+
+  const projectedBalance = useMemo(() => {
+    return totalBalance - openInvoicesTotal;
+  }, [totalBalance, openInvoicesTotal]);
+
   /* ================================
      RENDER
   ==================================*/
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
+
+      {/* RESUMO FINANCEIRO */}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+          <div className="text-sm text-slate-500">Saldo Atual</div>
+          <div className="text-2xl font-bold text-slate-800">
+            R$ {totalBalance.toFixed(2)}
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+          <div className="text-sm text-slate-500">Faturas em Aberto</div>
+          <div className="text-2xl font-bold text-rose-500">
+            R$ {openInvoicesTotal.toFixed(2)}
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+          <div className="text-sm text-slate-500">Saldo Projetado</div>
+          <div className="text-2xl font-bold text-indigo-600">
+            R$ {projectedBalance.toFixed(2)}
+          </div>
+        </div>
+
+      </div>
 
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-center">
         <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
@@ -476,7 +537,9 @@ const Dashboard: React.FC<DashboardProps> = ({
       {/* GRÁFICO INFERIOR (AREA) */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
         <h4 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 text-left">
-          <TrendingUp className="w-5 h-5 text-indigo-500" /> Fluxo de Caixa Diário - {monthsLabels[selectedMonth]}
+          <TrendingUp className="w-5 h-5 text-indigo-500" /> 
+          {/* Proteção contra undefined: */}
+          Fluxo de Caixa Diário - {monthsLabels[selectedMonth - 1] || "Mês Selecionado"}
         </h4>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">

@@ -238,7 +238,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({
 
       {/* Gráfico de Evolução Mensal */}
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
-        <h3 className="text-xl font-bold text-slate-800 mb-8 text-left">Evolução Mensal (Últimos 6 meses até {monthsLabels[selectedMonth]})</h3>
+        <h3 className="text-xl font-bold text-slate-800 mb-8 text-left">Evolução Mensal (Últimos 6 meses até {monthsLabels[selectedMonth - 1]})</h3>
         <div className="h-96">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={monthlyData}>
@@ -268,7 +268,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Maiores Gastos por Categoria */}
         <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
-          <h3 className="text-lg font-bold text-slate-800 mb-6 text-left">Maiores Gastos ({monthsLabels[selectedMonth]})</h3>
+          <h3 className="text-lg font-bold text-slate-800 mb-6 text-left">Maiores Gastos ({monthsLabels[selectedMonth - 1]})</h3>
           <div className="space-y-4 text-left">
             {categories
               .filter(c => c.type === 'EXPENSE')
@@ -324,12 +324,12 @@ const ReportsView: React.FC<ReportsViewProps> = ({
                      <div className={`text-5xl font-black ${margem >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>
                        {margem}%
                      </div>
-                     <p className="text-slate-500 font-medium">Margem de Poupança em {monthsLabels[selectedMonth]}</p>
+                     <p className="text-slate-500 font-medium">Margem de Poupança em {monthsLabels[selectedMonth - 1]}</p>
                      <p className="text-xs text-slate-400 px-8">Quanto maior a porcentagem, mais você está guardando de sua receita total.</p>
                    </div>
                  );
                }
-               return <p className="text-slate-400 italic">Sem receitas em {monthsLabels[selectedMonth]} para calcular.</p>
+               return <p className="text-slate-400 italic">Sem receitas em {monthsLabels[selectedMonth - 1]} para calcular.</p>
             })()}
           </div>
         </div>
