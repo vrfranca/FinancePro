@@ -200,10 +200,12 @@ const App: React.FC = () => {
 
   // Transactions
   const addTransaction = (t: Omit<Transaction, 'id' | 'userId'>) => {
+    const sourceAccountId = t.type === 'TRANSFER' ? t.sourceAccountId : t.accountId;
     const newTransaction: Transaction = {
       ...t,
       id: Math.random().toString(36).substr(2, 9),
-      userId: state.currentUser?.id || '1'
+      userId: state.currentUser?.id || '1',
+      accountId: sourceAccountId
     };
 
     const account = state.accounts.find(a => a.id === newTransaction.accountId);
@@ -275,6 +277,99 @@ const App: React.FC = () => {
     setState(prev => ({ ...prev, transactions: prev.transactions.filter(t => t.id !== id) }));
   };
 
+  // Funções para editar itens da fatura diretamente
+  const updateInvoiceItem = (invoiceId: string, itemId: string, updates: { description: string; amount: number }) => {
+    setState(prev => {
+      const updatedInvoices = prev.creditInvoices.map(inv => {
+        if (inv.id === invoiceId) {
+          const updatedItems = inv.items.map(item =>
+            item.id === itemId
+              ? { ...item, ...updates }
+              : item
+          );
+
+          const newTotal = updatedItems.reduce((sum, item) => sum + item.amount, 0);
+
+          return { ...inv, items: updatedItems, total: newTotal };
+        }
+        return inv;
+      });
+
+      return { ...prev, creditInvoices: updatedInvoices };
+    });
+  };
+
+  const deleteInvoiceItem = (invoiceId: string, itemId: string) => {
+    setState(prev => {
+      const updatedInvoices = prev.creditInvoices
+        .map(inv => {
+          if (inv.id === invoiceId) {
+            const filteredItems = inv.items.filter(item => item.id !== itemId);
+            const newTotal = filteredItems.reduce((sum, item) => sum + item.amount, 0);
+            return { ...inv, items: filteredItems, total: newTotal };
+          }
+          return inv;
+        })
+        .filter(inv => inv.items.length > 0);
+
+      return { ...prev, creditInvoices: updatedInvoices };
+    });
+  };
+
+  const createCreditInvoiceEntries = (
+    recurringItem: RecurringItem,
+    account: Account,
+    invoices: CreditInvoice[]
+  ) => {
+    const occurrences = recurringItem.occurrences ?? 1;
+    const start = new Date(recurringItem.startDate || new Date().toISOString());
+    let updatedInvoices = [...invoices];
+
+    for (let i = 0; i < occurrences; i++) {
+      const installmentDate = new Date(start.getFullYear(), start.getMonth() + i, start.getDate());
+      const { month, year } = getInvoiceMonth(installmentDate.toISOString(), account.dueDay!);
+
+      const existingInvoice = updatedInvoices.find(inv =>
+        inv.accountId === account.id &&
+        inv.month === month &&
+        inv.year === year
+      );
+
+      const invoiceItem = {
+        id: Math.random().toString(36).substr(2, 9),
+        recurringItemId: recurringItem.id,
+        description: recurringItem.description,
+        amount: recurringItem.amount,
+        installment: i + 1,
+        totalInstallments: occurrences
+      };
+
+      if (existingInvoice) {
+        updatedInvoices = updatedInvoices.map(inv =>
+          inv.id === existingInvoice.id
+            ? {
+                ...inv,
+                items: [...inv.items, invoiceItem],
+                total: inv.total + recurringItem.amount
+              }
+            : inv
+        );
+      } else {
+        updatedInvoices.push({
+          id: Math.random().toString(36).substr(2, 9),
+          accountId: account.id,
+          month,
+          year,
+          items: [invoiceItem],
+          total: recurringItem.amount,
+          isPaid: false
+        });
+      }
+    }
+
+    return updatedInvoices;
+  };
+
   // Recurring
   const addRecurring = (r: Omit<RecurringItem, 'id' | 'userId'>) => {
     const newItem: RecurringItem = {
@@ -289,89 +384,59 @@ const App: React.FC = () => {
 
     const account = state.accounts.find(a => a.id === newItem.accountId);
 
-    // 🔵 Se for cartão de crédito
-    if (account?.type === 'CREDIT') {
+    setState(prev => {
+      let updatedInvoices = prev.creditInvoices;
 
-      const occurrences = newItem.occurrences ?? 1;
-      const start = new Date(newItem.startDate);
+      if (account?.type === 'CREDIT') {
+        updatedInvoices = createCreditInvoiceEntries(newItem, account, prev.creditInvoices);
+      }
 
-      setState(prev => {
-
-        let updatedInvoices = [...prev.creditInvoices];
-
-        for (let i = 0; i < occurrences; i++) {
-
-          const installmentDate = new Date(
-            start.getFullYear(),
-            start.getMonth() + i,
-            start.getDate()
-          );
-
-          const { month, year } = getInvoiceMonth(
-            installmentDate.toISOString(),
-            account.dueDay!
-          );
-
-          const existingInvoice = updatedInvoices.find(inv =>
-            inv.accountId === account.id &&
-            inv.month === month &&
-            inv.year === year
-          );
-
-          const invoiceItem = {
-            id: Math.random().toString(36).substr(2, 9),
-            recurringItemId: newItem.id,
-            description: newItem.description,
-            amount: newItem.amount,
-            installment: i + 1,
-            totalInstallments: occurrences
-          };
-
-          if (existingInvoice) {
-            updatedInvoices = updatedInvoices.map(inv =>
-              inv.id === existingInvoice.id
-                ? {
-                    ...inv,
-                    items: [...inv.items, invoiceItem],
-                    total: inv.total + newItem.amount
-                  }
-                : inv
-            );
-          } else {
-            updatedInvoices.push({
-              id: Math.random().toString(36).substr(2, 9),
-              accountId: account.id,
-              month,
-              year,
-              items: [invoiceItem],
-              total: newItem.amount,
-              isPaid: false
-            });
-          }
-        }
-
-        return {
-          ...prev,
-          creditInvoices: updatedInvoices
-        };
-      });
-
-      return;
-    }
-
-    // 🟢 Conta normal → comportamento antigo
-    setState(prev => ({
-      ...prev,
-      recurringItems: [...prev.recurringItems, newItem]
-    }));
+      return {
+        ...prev,
+        recurringItems: [...prev.recurringItems, newItem],
+        creditInvoices: updatedInvoices
+      };
+    });
   };
 
   const updateRecurring = (id: string, updates: Partial<RecurringItem>) => {
-    setState(prev => ({ ...prev, recurringItems: prev.recurringItems.map(r => r.id === id ? { ...r, ...updates } : r) }));
+    setState(prev => {
+      const existing = prev.recurringItems.find(r => r.id === id);
+      if (!existing) return prev;
+
+      const updatedRecurring = { ...existing, ...updates };
+      const account = prev.accounts.find(a => a.id === updatedRecurring.accountId);
+
+      let updatedInvoices = prev.creditInvoices
+        .map(inv => ({
+          ...inv,
+          items: inv.items.filter(item => item.recurringItemId !== id)
+        }))
+        .filter(inv => inv.items.length > 0);
+
+      if (account?.type === 'CREDIT') {
+        updatedInvoices = createCreditInvoiceEntries(updatedRecurring, account, updatedInvoices);
+      }
+
+      return {
+        ...prev,
+        recurringItems: prev.recurringItems.map(r => r.id === id ? updatedRecurring : r),
+        creditInvoices: updatedInvoices
+      };
+    });
   };
 
   const deleteRecurring = (id: string) => {
-    setState(prev => ({ ...prev, recurringItems: prev.recurringItems.filter(r => r.id !== id) }));
+    setState(prev => ({
+      ...prev,
+      recurringItems: prev.recurringItems.filter(r => r.id !== id),
+      creditInvoices: prev.creditInvoices
+        .map(inv => ({
+          ...inv,
+          items: inv.items.filter(item => item.recurringItemId !== id)
+        }))
+        .filter(inv => inv.items.length > 0)
+    }));
   };
 
   const updateSettings = (updates: Partial<AppState>) => setState(prev => ({ ...prev, ...updates }));
@@ -458,7 +523,10 @@ const App: React.FC = () => {
             invoices={state.creditInvoices}
             accounts={filteredAccounts}
             categories={filteredCategories}
+            transactions={state.transactions} // Usar todas as transações, não as filtradas
             onPayInvoice={payCreditInvoice}
+            onUpdateInvoiceItem={updateInvoiceItem}
+            onDeleteInvoiceItem={deleteInvoiceItem}
           />
         );
 
@@ -541,7 +609,7 @@ const App: React.FC = () => {
       { id: 'reports', label: 'Relatórios', icon: PieChart },
     ];
 
-    const payCreditInvoice = (invoiceId: string, paymentAccountId: string) => {
+    const payCreditInvoice = (invoiceId: string, paymentAccountId: string, paymentAmount?: number, paymentDate?: string) => {
 
       setState(prev => {
 
@@ -551,23 +619,27 @@ const App: React.FC = () => {
         const account = prev.accounts.find(a => a.id === invoice.accountId);
         if (!account) return prev;
 
-        const paymentDate =
+        const defaultPaymentDate =
           `${invoice.year}-${String(invoice.month).padStart(2,'0')}-${String(account.dueDay || 1).padStart(2,'0')}`;
+
+        // Usar os parâmetros fornecidos ou usar valores padrão
+        const finalAmount = paymentAmount ?? invoice.total;
+        const finalDate = paymentDate ?? defaultPaymentDate;
 
         const paymentTransaction: Transaction = {
           id: Math.random().toString(36).substr(2,9),
           description: `Pagamento fatura ${account.name}`,
-          amount: invoice.total,
-          type: 'EXPENSE',
-          date: paymentDate,
-          accountId: paymentAccountId,
-          categoryId: 'credit-card-payment',
+          amount: finalAmount,
+          type: 'TRANSFER',
+          date: finalDate,
+          sourceAccountId: paymentAccountId,
+          destinationAccountId: invoice.accountId,
           userId: prev.currentUser!.id,
           isRecurring: false
         };
 
         const updatedInvoices = prev.creditInvoices.map(i =>
-          i.id === invoiceId ? { ...i, isPaid: true } : i
+          i.id === invoiceId ? { ...i, isPaid: true, paidAt: finalDate } : i
         );
 
         return {

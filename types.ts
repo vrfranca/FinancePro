@@ -1,5 +1,5 @@
 
-export type TransactionType = 'INCOME' | 'EXPENSE';
+export type TransactionType = 'INCOME' | 'EXPENSE' | 'TRANSFER';
 
 export interface Category {
   id: string;
@@ -36,8 +36,10 @@ export interface Transaction {
   description: string;
   amount: number;
   date: string;
-  categoryId: string;
-  accountId: string;
+  categoryId?: string;
+  accountId?: string;
+  sourceAccountId?: string;
+  destinationAccountId?: string;
   type: TransactionType;
   isRecurring: boolean;
 

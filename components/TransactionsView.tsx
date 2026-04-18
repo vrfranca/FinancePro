@@ -34,6 +34,8 @@ export default function TransactionsView({
     date: new Date().toISOString().split("T")[0],
     categoryId: "",
     accountId: "",
+    sourceAccountId: "",
+    destinationAccountId: "",
     type: "EXPENSE" as TransactionType,
     isRecurring: false,
     installments: 1, // NOVO
@@ -104,8 +106,10 @@ export default function TransactionsView({
       description: transaction.description,
       amount: transaction.amount,
       date: transaction.date,
-      categoryId: transaction.categoryId,
-      accountId: transaction.accountId,
+      categoryId: transaction.categoryId || "",
+      accountId: transaction.accountId || "",
+      sourceAccountId: transaction.sourceAccountId || "",
+      destinationAccountId: transaction.destinationAccountId || "",
       type: transaction.type,
       isRecurring: transaction.isRecurring,
       installments: transaction.installments || 1, // NOVO
@@ -118,11 +122,18 @@ export default function TransactionsView({
   const handleSaveTransaction = () => {
     if (!transactionForm.description.trim()) return;
     if (transactionForm.amount <= 0) return;
-    if (!transactionForm.categoryId || !transactionForm.accountId) return;
+
+    if (transactionForm.type === 'TRANSFER') {
+      if (!transactionForm.sourceAccountId || !transactionForm.destinationAccountId) return;
+      if (transactionForm.sourceAccountId === transactionForm.destinationAccountId) return;
+    } else {
+      if (!transactionForm.categoryId || !transactionForm.accountId) return;
+    }
 
     const payload = {
       ...transactionForm,
       amount: Number(transactionForm.amount),
+      accountId: transactionForm.type === 'TRANSFER' ? transactionForm.sourceAccountId : transactionForm.accountId,
     };
 
     if (editingTransaction) {
@@ -135,7 +146,7 @@ export default function TransactionsView({
     setEditingTransaction(null);
   };
 
-  const selectedAccount = accounts.find(a => a.id === transactionForm.accountId);
+  const selectedAccount = accounts.find(a => a.id === (transactionForm.type === 'TRANSFER' ? transactionForm.sourceAccountId : transactionForm.accountId));
   const isCreditAccount = selectedAccount?.type === "CREDIT";
 
   return (
@@ -199,10 +210,15 @@ export default function TransactionsView({
               <div className="text-sm text-gray-500">
                 {formatDateBR(t.date)}
               </div>
+              {t.type === 'TRANSFER' && t.sourceAccountId && t.destinationAccountId && (
+                <div className="text-xs text-slate-400">
+                  {accounts.find(a => a.id === t.sourceAccountId)?.name} → {accounts.find(a => a.id === t.destinationAccountId)?.name}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-4">
-              <span className={`font-semibold ${t.type === "INCOME" ? "text-emerald-600" : "text-rose-600"}`}>
+              <span className={`font-semibold ${t.type === "INCOME" ? "text-emerald-600" : t.type === "EXPENSE" ? "text-rose-600" : "text-slate-600"}`}>
                 R$ {t.amount.toFixed(2)}
               </span>
 
@@ -253,7 +269,7 @@ export default function TransactionsView({
                 placeholder="Descrição"
               />
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <button
                   type="button"
                   onClick={() => setTransactionForm({...transactionForm, type: "EXPENSE"})}
@@ -277,79 +293,135 @@ export default function TransactionsView({
                 >
                   RECEITA
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTransactionForm({...transactionForm, type: "TRANSFER"})}
+                  className={`py-3 rounded-2xl border-2 font-bold text-sm ${
+                    transactionForm.type === "TRANSFER"
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-100 bg-white text-slate-400"
+                  }`}
+                >
+                  TRANSFERÊNCIA
+                </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-                <input
-                  type="number"
-                  step="0.01"
-                  value={transactionForm.amount}
-                  onChange={(e) =>
-                    setTransactionForm({...transactionForm, amount: Number(e.target.value)})
-                  }
-                  className="px-4 py-3 border border-slate-300 rounded-2xl"
-                  placeholder="Valor"
-                />
-
-                <input
-                  type="date"
-                  value={transactionForm.date}
-                  onChange={(e) =>
-                    setTransactionForm({...transactionForm, date: e.target.value})
-                  }
-                  className="px-4 py-3 border border-slate-300 rounded-2xl"
-                />
-
-                {isCreditAccount && (
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">
+                    Valor
+                  </label>
                   <input
                     type="number"
-                    min={1}
-                    step={1}
-                    value={transactionForm.installments}
+                    step="0.01"
+                    value={transactionForm.amount}
                     onChange={(e) =>
-                      setTransactionForm({
-                        ...transactionForm,
-                        installments: Math.max(1, Number(e.target.value)),
-                      })
+                      setTransactionForm({...transactionForm, amount: Number(e.target.value)})
                     }
-                    className="px-4 py-3 border border-slate-300 rounded-2xl"
-                    placeholder="Parcelas"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-2xl"
+                    placeholder="0.00"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">
+                    Data
+                  </label>
+                  <input
+                    type="date"
+                    value={transactionForm.date}
+                    onChange={(e) =>
+                      setTransactionForm({...transactionForm, date: e.target.value})
+                    }
+                    className="w-full px-4 py-3 border border-slate-300 rounded-2xl"
+                  />
+                </div>
+
+                {isCreditAccount && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">
+                      Parcelas
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={transactionForm.installments}
+                      onChange={(e) =>
+                        setTransactionForm({
+                          ...transactionForm,
+                          installments: Math.max(1, Number(e.target.value)),
+                        })
+                      }
+                      className="w-full px-4 py-3 border border-slate-300 rounded-2xl"
+                      placeholder="1"
+                    />
+                  </div>
                 )}
 
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {transactionForm.type !== 'TRANSFER' ? (
+                  <>
+                    <select
+                      value={transactionForm.categoryId}
+                      onChange={(e) =>
+                        setTransactionForm({...transactionForm, categoryId: e.target.value})
+                      }
+                      className="px-4 py-3 border border-slate-300 rounded-2xl"
+                    >
+                      <option value="">Selecione Categoria</option>
+                      {categories
+                        .filter((c) => c.type === transactionForm.type)
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                    </select>
 
-                <select
-                  value={transactionForm.categoryId}
-                  onChange={(e) =>
-                    setTransactionForm({...transactionForm, categoryId: e.target.value})
-                  }
-                  className="px-4 py-3 border border-slate-300 rounded-2xl"
-                >
-                  <option value="">Selecione Categoria</option>
-                  {categories
-                    .filter((c) => c.type === transactionForm.type)
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                </select>
+                    <select
+                      value={transactionForm.accountId}
+                      onChange={(e) =>
+                        setTransactionForm({...transactionForm, accountId: e.target.value})
+                      }
+                      className="px-4 py-3 border border-slate-300 rounded-2xl"
+                    >
+                      <option value="">Selecione Conta</option>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </select>
+                  </>
+                ) : (
+                  <>
+                    <select
+                      value={transactionForm.sourceAccountId}
+                      onChange={(e) =>
+                        setTransactionForm({...transactionForm, sourceAccountId: e.target.value})
+                      }
+                      className="px-4 py-3 border border-slate-300 rounded-2xl"
+                    >
+                      <option value="">Conta de Origem</option>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </select>
 
-                <select
-                  value={transactionForm.accountId}
-                  onChange={(e) =>
-                    setTransactionForm({...transactionForm, accountId: e.target.value})
-                  }
-                  className="px-4 py-3 border border-slate-300 rounded-2xl"
-                >
-                  <option value="">Selecione Conta</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
-
+                    <select
+                      value={transactionForm.destinationAccountId}
+                      onChange={(e) =>
+                        setTransactionForm({...transactionForm, destinationAccountId: e.target.value})
+                      }
+                      className="px-4 py-3 border border-slate-300 rounded-2xl"
+                    >
+                      <option value="">Conta de Destino</option>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
               </div>
 
               <textarea
