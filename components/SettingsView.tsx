@@ -477,13 +477,22 @@ const SettingsView: React.FC<SettingsViewProps> = ({ state, onUpdate, onlyUsers,
                             return;
                           }
 
-                          if (!window.confirm('Tem certeza que deseja excluir este usuário?')) return;
+                          if (!window.confirm('Tem certeza que deseja excluir este usuário e TODOS os seus dados associados?\n\nIsso incluirá:\n• Todas as contas\n• Todas as transações\n• Todos os itens recorrentes\n• Todas as categorias\n• Todas as faturas de cartão')) return;
 
+                          // Delete all user-associated data
                           onUpdate({
-                            users: state.users.filter(u => u.id !== user.id)
+                            users: state.users.filter(u => u.id !== user.id),
+                            accounts: state.accounts.filter(a => a.userId !== user.id),
+                            transactions: state.transactions.filter(t => t.userId !== user.id),
+                            recurringItems: state.recurringItems.filter(r => r.userId !== user.id),
+                            categories: state.categories.filter(c => c.userId !== user.id),
+                            creditInvoices: state.creditInvoices.filter(inv => {
+                              const account = state.accounts.find(a => a.id === inv.accountId);
+                              return account?.userId !== user.id;
+                            })
                           });
 
-                          alert('Usuário excluído com sucesso.');
+                          alert('Usuário e todos os seus dados foram excluídos com sucesso.');
                         }}
                         className={`text-slate-400 ${
                           user.isAdmin 
