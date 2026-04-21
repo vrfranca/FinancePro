@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Calendar, Plus, Edit2, Trash2, X } from "lucide-react";
-import { AppState, Transaction, Category, Account, TransactionType } from "../types";
+import { AppState, Transaction, Category, Account, TransactionType, RecurringItem } from "../types";
+import { expandTransactions, expandRecurringItems } from "../utils/financialEngine";
 
 interface TransactionsViewProps {
   state: AppState;
@@ -27,6 +28,7 @@ export default function TransactionsView({
 
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [editingRecurringForMonth, setEditingRecurringForMonth] = useState<RecurringItem | null>(null);
 
   const initialFormState = {
     description: "",
@@ -76,17 +78,70 @@ export default function TransactionsView({
   const filteredTransactions = useMemo(() => {
     if (!state.currentUser) return [];
 
-    return state.transactions.filter((t) => {
-      const [year, month] = t.date.split("-").map(Number);
+    // Expandir transações parceladas
+    const userTransactions = state.transactions.filter(t => t.userId === state.currentUser.id);
+    const expandedTransactions = expandTransactions({
+      transactions: userTransactions,
+      accounts: accounts
+    });
 
+    // Expandir recorrentes
+    const userRecurring = state.recurringItems.filter(r => r.userId === state.currentUser.id);
+    const expandedRecurring = expandRecurringItems(userRecurring, selectedMonth, selectedYear);
+
+    // Verificar se há transações manuais que sobrescrevem recorrentes em um mês específico
+    const recurringOverrides = new Set<string>();
+    userTransactions.forEach(t => {
+      // Se uma transação foi criada a partir de um recorrente em um mês específico, marcar como override
+      if ((t as any)._recurringOverride) {
+        recurringOverrides.add((t as any)._recurringOverrideId);
+      }
+    });
+
+    // Combinar e filtrar
+    const allItems = [
+      ...expandedTransactions.map((t) => ({
+        ...t,
+        _type: 'transaction',
+        displayDescription: t.installments && t.installments > 1 
+          ? `${t.description} (Parcela ${t.installmentIndex}/${t.installments})`
+          : t.description,
+        _originalTransaction: state.transactions.find(orig => orig.id === t.id)
+      })),
+      ...expandedRecurring
+        .filter(r => {
+          // Verificar se não foi sobrescrito por uma transação manual
+          const override = userTransactions.find(t => 
+            (t as any)._recurringOverride && 
+            (t as any)._recurringOverrideId === r.id &&
+            t.date.split('-').slice(0, 2).join('-') === `${r.effectiveYear.toString().padStart(4, '0')}-${r.effectiveMonth.toString().padStart(2, '0')}`
+          );
+          return !override;
+        })
+        .map((r) => ({
+          ...r,
+          _type: 'recurring',
+          date: `${r.effectiveYear.toString().padStart(4, '0')}-${r.effectiveMonth.toString().padStart(2, '0')}-${r.dayOfMonth.toString().padStart(2, '0')}`,
+          displayDescription: r.occurrences && r.occurrences > 1 
+            ? `${r.description} (Ocorrência ${r.occurrenceIndex}/${r.occurrences})`
+            : r.description,
+          _originalRecurring: state.recurringItems.find(orig => orig.id === r.id)
+        }))
+    ].filter((item) => {
       return (
-        t.userId === state.currentUser.id &&
-        month === selectedMonth &&
-        year === selectedYear &&
-        t.description.toLowerCase().includes(search.toLowerCase())
+        item.effectiveMonth === selectedMonth &&
+        item.effectiveYear === selectedYear &&
+        item.description.toLowerCase().includes(search.toLowerCase())
       );
     });
-  }, [state.transactions, state.currentUser, selectedMonth, selectedYear, search]);
+
+    // Ordenar por dia do mês
+    return allItems.sort((a, b) => {
+      const dayA = parseInt(a.date.split('-')[2]);
+      const dayB = parseInt(b.date.split('-')[2]);
+      return dayA - dayB;
+    });
+  }, [state.transactions, state.recurringItems, state.currentUser, accounts, selectedMonth, selectedYear, search]);
 
   const formatDateBR = (dateStr: string) => {
     const [year, month, day] = dateStr.split("-");
@@ -136,14 +191,28 @@ export default function TransactionsView({
       accountId: transactionForm.type === 'TRANSFER' ? transactionForm.sourceAccountId : transactionForm.accountId,
     };
 
-    if (editingTransaction) {
+    if (editingRecurringForMonth) {
+      // Edição de recorrente para um mês específico: criar transação que sobrescreve
+      addTransaction({
+        ...payload,
+        isRecurring: false,
+        installments: 1,
+        _recurringOverride: true,
+        _recurringOverrideId: editingRecurringForMonth.id
+      } as any);
+      setIsTransactionModalOpen(false);
+      setEditingRecurringForMonth(null);
+    } else if (editingTransaction) {
       updateTransaction(editingTransaction.id, payload);
+      setIsTransactionModalOpen(false);
+      setEditingTransaction(null);
     } else {
       addTransaction(payload);
+      setIsTransactionModalOpen(false);
+      setEditingTransaction(null);
     }
 
-    setIsTransactionModalOpen(false);
-    setEditingTransaction(null);
+    setTransactionForm(initialFormState);
   };
 
   const selectedAccount = accounts.find(a => a.id === (transactionForm.type === 'TRANSFER' ? transactionForm.sourceAccountId : transactionForm.accountId));
@@ -202,13 +271,14 @@ export default function TransactionsView({
       <div className="bg-white rounded-2xl shadow overflow-hidden">
         {filteredTransactions.map((t) => (
           <div
-            key={t.id}
+            key={`${t._type}-${t.id}-${t.installmentIndex || t.occurrenceIndex || 1}`}
             className="flex justify-between items-center px-4 py-3 border-b last:border-b-0"
           >
             <div>
-              <div className="font-medium">{t.description}</div>
+              <div className="font-medium">{t.displayDescription}</div>
               <div className="text-sm text-gray-500">
                 {formatDateBR(t.date)}
+                {t._type === 'recurring' && <span className="ml-2 text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">Recorrente</span>}
               </div>
               {t.type === 'TRANSFER' && t.sourceAccountId && t.destinationAccountId && (
                 <div className="text-xs text-slate-400">
@@ -222,7 +292,26 @@ export default function TransactionsView({
                 R$ {t.amount.toFixed(2)}
               </span>
 
-              <button onClick={() => openEditModal(t)}>
+              <button onClick={() => {
+                if (t._type === 'recurring') {
+                  setEditingRecurringForMonth(t._originalRecurring || t);
+                  setTransactionForm({
+                    description: t.description,
+                    amount: t.amount,
+                    date: t.date,
+                    categoryId: t.categoryId || "",
+                    accountId: t.accountId || "",
+                    sourceAccountId: t.sourceAccountId || "",
+                    destinationAccountId: t.destinationAccountId || "",
+                    type: t.type,
+                    isRecurring: false,
+                    installments: 1,
+                    notes: "",
+                  });
+                } else {
+                  openEditModal(t._originalTransaction || t);
+                }
+              }}>
                 <Edit2 size={16} />
               </button>
 
@@ -242,6 +331,7 @@ export default function TransactionsView({
               onClick={() => {
                 setIsTransactionModalOpen(false);
                 setEditingTransaction(null);
+                setEditingRecurringForMonth(null);
               }}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
             >
@@ -250,8 +340,13 @@ export default function TransactionsView({
 
             <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50">
               <h2 className="text-xl font-bold text-slate-800">
-                {editingTransaction ? "Editar Movimentação" : "Nova Movimentação"}
+                {editingRecurringForMonth ? `Editar Movimentação Recorrente - ${monthsLabels[selectedMonth - 1]} de ${selectedYear}` : editingTransaction ? "Editar Movimentação" : "Nova Movimentação"}
               </h2>
+              {editingRecurringForMonth && (
+                <p className="text-sm text-slate-600 mt-2">
+                  Esta edição afetará apenas o mês de {monthsLabels[selectedMonth - 1]}, não o registro recorrente original.
+                </p>
+              )}
             </div>
 
             <div className="p-8 space-y-6">
@@ -338,7 +433,7 @@ export default function TransactionsView({
                   />
                 </div>
 
-                {isCreditAccount && (
+                {isCreditAccount && !editingRecurringForMonth && (
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">
                       Parcelas
@@ -438,7 +533,7 @@ export default function TransactionsView({
                 onClick={handleSaveTransaction}
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl"
               >
-                {editingTransaction ? "Confirmar Edição" : "Salvar Movimentação"}
+                {editingRecurringForMonth ? "Salvar para este Mês" : editingTransaction ? "Confirmar Edição" : "Salvar Movimentação"}
               </button>
 
             </div>

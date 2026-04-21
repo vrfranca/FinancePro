@@ -1,9 +1,16 @@
-import { Transaction, Account } from "../types";
+import { Transaction, Account, RecurringItem } from "../types";
 
 interface ExpandedTransaction extends Transaction {
   effectiveMonth: number;
   effectiveYear: number;
   installmentIndex?: number;
+}
+
+interface ExpandedRecurring extends RecurringItem {
+  effectiveMonth: number;
+  effectiveYear: number;
+  occurrenceIndex?: number;
+  _isExpandedRecurring: true;
 }
 
 interface EngineInput {
@@ -54,7 +61,7 @@ export function expandTransactions({
       }
     }
 
-    const installmentValue = t.amount / installments;
+    const installmentValue = t.amount;
 
     for (let i = 0; i < installments; i++) {
       let effMonth = firstMonth + i;
@@ -72,6 +79,53 @@ export function expandTransactions({
         effectiveYear: effYear,
         installmentIndex: i + 1,
       });
+    }
+  });
+
+  return expanded;
+}
+
+export function expandRecurringItems(
+  recurringItems: RecurringItem[],
+  selectedMonth: number,
+  selectedYear: number,
+  monthsToExpand: number = 12
+): ExpandedRecurring[] {
+  const expanded: ExpandedRecurring[] = [];
+
+  recurringItems.forEach((r) => {
+    const startDate = r.startDate ? new Date(r.startDate) : new Date();
+    const occurrences = r.occurrences ?? 1;
+
+    // Calcular quantos meses já passaram desde startDate até selectedMonth/selectedYear
+    const startMonth = startDate.getMonth() + 1;
+    const startYear = startDate.getFullYear();
+
+    for (let i = 0; i < occurrences; i++) {
+      let effMonth = startMonth + i;
+      let effYear = startYear;
+
+      while (effMonth > 12) {
+        effMonth -= 12;
+        effYear += 1;
+      }
+
+      // Apenas incluir se estiver dentro da janela de expansão
+      // (mês selecionado até monthsToExpand meses para trás)
+      const isInWindow = 
+        (effYear === selectedYear && effMonth === selectedMonth) ||
+        (effYear === selectedYear && effMonth < selectedMonth) ||
+        (effYear < selectedYear);
+
+      if (isInWindow) {
+        expanded.push({
+          ...r,
+          effectiveMonth: effMonth,
+          effectiveYear: effYear,
+          occurrenceIndex: i + 1,
+          _isExpandedRecurring: true,
+        });
+      }
     }
   });
 

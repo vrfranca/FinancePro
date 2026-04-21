@@ -215,34 +215,45 @@ const App: React.FC = () => {
 
       // Se for cartão de crédito, atualizamos a fatura internamente no mesmo setState
       if (account?.type === 'CREDIT') {
-        const { month, year } = getInvoiceMonth(newTransaction.date, account.dueDay!);
-        
-        const existingInvoice = prev.creditInvoices.find(inv =>
-          inv.accountId === account.id && inv.month === month && inv.year === year
-        );
+        const installments = newTransaction.installments || 1;
 
-        const invoiceItem = {
-          id: Math.random().toString(36).substr(2, 9),
-          transactionId: newTransaction.id,
-          description: newTransaction.description,
-          amount: newTransaction.amount
-        };
-
-        if (existingInvoice) {
-          nextInvoices = prev.creditInvoices.map(inv =>
-            inv.id === existingInvoice.id
-              ? { ...inv, items: [...inv.items, invoiceItem], total: inv.total + newTransaction.amount }
-              : inv
+        // Para cada parcela
+        for (let i = 0; i < installments; i++) {
+          // Calcular a data da parcela: data inicial + i meses
+          const transactionDate = new Date(newTransaction.date);
+          const installmentDate = new Date(transactionDate.getFullYear(), transactionDate.getMonth() + i, transactionDate.getDate());
+          
+          const { month, year } = getInvoiceMonth(installmentDate.toISOString().split('T')[0], account.dueDay!);
+          
+          const existingInvoice = nextInvoices.find(inv =>
+            inv.accountId === account.id && inv.month === month && inv.year === year
           );
-        } else {
-          nextInvoices = [...prev.creditInvoices, {
+
+          const invoiceItem = {
             id: Math.random().toString(36).substr(2, 9),
-            accountId: account.id,
-            month, year,
-            items: [invoiceItem],
-            total: newTransaction.amount,
-            isPaid: false
-          }];
+            transactionId: newTransaction.id,
+            description: newTransaction.description,
+            amount: newTransaction.amount,
+            installment: i + 1,
+            totalInstallments: installments
+          };
+
+          if (existingInvoice) {
+            nextInvoices = nextInvoices.map(inv =>
+              inv.id === existingInvoice.id
+                ? { ...inv, items: [...inv.items, invoiceItem], total: inv.total + newTransaction.amount }
+                : inv
+            );
+          } else {
+            nextInvoices = [...nextInvoices, {
+              id: Math.random().toString(36).substr(2, 9),
+              accountId: account.id,
+              month, year,
+              items: [invoiceItem],
+              total: newTransaction.amount,
+              isPaid: false
+            }];
+          }
         }
       }
 
@@ -270,11 +281,96 @@ const App: React.FC = () => {
   };
 
   const updateTransaction = (id: string, updates: Partial<Transaction>) => {
-    setState(prev => ({ ...prev, transactions: prev.transactions.map(t => t.id === id ? { ...t, ...updates } : t) }));
+    setState(prev => {
+      const updatedTransaction = prev.transactions.find(t => t.id === id);
+      if (!updatedTransaction) return prev;
+
+      const mergedTransaction: Transaction = { ...updatedTransaction, ...updates };
+      const account = prev.accounts.find(a => a.id === mergedTransaction.accountId);
+
+      let nextInvoices = prev.creditInvoices;
+
+      // Se for cartão de crédito, recalcular as faturas
+      if (account?.type === 'CREDIT') {
+        // Remover todos os itens da fatura relacionados a essa transação
+        nextInvoices = prev.creditInvoices
+          .map(inv => ({
+            ...inv,
+            items: inv.items.filter(item => item.transactionId !== id),
+            total: inv.items
+              .filter(item => item.transactionId !== id)
+              .reduce((sum, item) => sum + item.amount, 0)
+          }))
+          .filter(inv => inv.items.length > 0);
+
+        // Adicionar novos itens de fatura com as parcelas atualizadas
+        const installments = mergedTransaction.installments || 1;
+
+        for (let i = 0; i < installments; i++) {
+          const transactionDate = new Date(mergedTransaction.date);
+          const installmentDate = new Date(transactionDate.getFullYear(), transactionDate.getMonth() + i, transactionDate.getDate());
+          
+          const { month, year } = getInvoiceMonth(installmentDate.toISOString().split('T')[0], account.dueDay!);
+          
+          const existingInvoice = nextInvoices.find(inv =>
+            inv.accountId === account.id && inv.month === month && inv.year === year
+          );
+
+          const invoiceItem = {
+            id: Math.random().toString(36).substr(2, 9),
+            transactionId: mergedTransaction.id,
+            description: mergedTransaction.description,
+            amount: mergedTransaction.amount,
+            installment: i + 1,
+            totalInstallments: installments
+          };
+
+          if (existingInvoice) {
+            nextInvoices = nextInvoices.map(inv =>
+              inv.id === existingInvoice.id
+                ? { ...inv, items: [...inv.items, invoiceItem], total: inv.total + mergedTransaction.amount }
+                : inv
+            );
+          } else {
+            nextInvoices = [...nextInvoices, {
+              id: Math.random().toString(36).substr(2, 9),
+              accountId: account.id,
+              month, year,
+              items: [invoiceItem],
+              total: mergedTransaction.amount,
+              isPaid: false
+            }];
+          }
+        }
+      }
+
+      return {
+        ...prev,
+        transactions: prev.transactions.map(t => t.id === id ? mergedTransaction : t),
+        creditInvoices: nextInvoices
+      };
+    });
   };
 
   const deleteTransaction = (id: string) => {
-    setState(prev => ({ ...prev, transactions: prev.transactions.filter(t => t.id !== id) }));
+    setState(prev => {
+      // Remover itens de fatura associados a essa transação
+      const updatedInvoices = prev.creditInvoices
+        .map(inv => ({
+          ...inv,
+          items: inv.items.filter(item => item.transactionId !== id),
+          total: inv.items
+            .filter(item => item.transactionId !== id)
+            .reduce((sum, item) => sum + item.amount, 0)
+        }))
+        .filter(inv => inv.items.length > 0);
+
+      return {
+        ...prev,
+        transactions: prev.transactions.filter(t => t.id !== id),
+        creditInvoices: updatedInvoices
+      };
+    });
   };
 
   // Funções para editar itens da fatura diretamente
