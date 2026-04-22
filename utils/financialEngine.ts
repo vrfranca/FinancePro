@@ -95,36 +95,54 @@ export function expandRecurringItems(
 
   recurringItems.forEach((r) => {
     const startDate = r.startDate ? new Date(r.startDate) : new Date();
-    const occurrences = r.occurrences ?? 1;
-
-    // Calcular quantos meses já passaram desde startDate até selectedMonth/selectedYear
     const startMonth = startDate.getMonth() + 1;
     const startYear = startDate.getFullYear();
 
-    for (let i = 0; i < occurrences; i++) {
-      let effMonth = startMonth + i;
-      let effYear = startYear;
+    // Se occurrences é undefined, é um lançamento contínuo
+    const isContinuous = r.occurrences === undefined || r.occurrences === null;
 
-      while (effMonth > 12) {
-        effMonth -= 12;
-        effYear += 1;
-      }
+    if (isContinuous) {
+      // Lançamento contínuo: incluir em todos os meses a partir da data de início
+      const isAfterStart = 
+        selectedYear > startYear || 
+        (selectedYear === startYear && selectedMonth >= startMonth);
 
-      // Apenas incluir se estiver dentro da janela de expansão
-      // (mês selecionado até monthsToExpand meses para trás)
-      const isInWindow = 
-        (effYear === selectedYear && effMonth === selectedMonth) ||
-        (effYear === selectedYear && effMonth < selectedMonth) ||
-        (effYear < selectedYear);
-
-      if (isInWindow) {
+      if (isAfterStart) {
         expanded.push({
           ...r,
-          effectiveMonth: effMonth,
-          effectiveYear: effYear,
-          occurrenceIndex: i + 1,
+          effectiveMonth: selectedMonth,
+          effectiveYear: selectedYear,
           _isExpandedRecurring: true,
         });
+      }
+    } else {
+      // Lançamento com occurrences definidas: incluir apenas nos meses específicos
+      const occurrences = r.occurrences;
+
+      for (let i = 0; i < occurrences; i++) {
+        let effMonth = startMonth + i;
+        let effYear = startYear;
+
+        while (effMonth > 12) {
+          effMonth -= 12;
+          effYear += 1;
+        }
+
+        // Apenas incluir se estiver dentro da janela de expansão
+        const isInWindow = 
+          (effYear === selectedYear && effMonth === selectedMonth) ||
+          (effYear === selectedYear && effMonth < selectedMonth) ||
+          (effYear < selectedYear);
+
+        if (isInWindow) {
+          expanded.push({
+            ...r,
+            effectiveMonth: effMonth,
+            effectiveYear: effYear,
+            occurrenceIndex: i + 1,
+            _isExpandedRecurring: true,
+          });
+        }
       }
     }
   });
